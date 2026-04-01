@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+body {
+  font-family: 'Poppins', sans-serif;
+  margin: 0;
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  background-color: #0a0f1c; 
+}
+
+/* Fixed backgrounds on body cause lag. We use a fixed pseudo-element instead. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: url('/glass.jpg') no-repeat center center;
+  background-size: cover;
+  z-index: -1;
+  transform: translateZ(0); 
+  will-change: transform;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px;}
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(239, 68, 68, 0.8); }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* 🚀 FIX: Lag Free Glassmorphism 🚀 */
+.glass-container {
+  background: rgba(10, 15, 30, 0.65);
+  backdrop-filter: blur(20px); /* Only the main container has blur now */
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  transform: translateZ(0); 
+}
+
+.glass-card {
+  /* Removed backdrop-filter from here to completely eliminate scroll lag! */
+  background: rgba(255, 255, 255, 0.05); 
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  transform: translateZ(0); 
+  will-change: transform;
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(239, 68, 68, 0.4); 
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-bounce-slow {
+  animation: bounceSlow 4s ease-in-out infinite alternate;
+}
+@keyframes bounceSlow {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-15px); }
+}
+
+.animate-bounce-x {
+  animation: bounceX 1.5s ease-in-out infinite alternate;
+}
+@keyframes bounceX {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(5px); }
+}
