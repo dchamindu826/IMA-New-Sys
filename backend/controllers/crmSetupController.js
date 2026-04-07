@@ -1,101 +1,132 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const pdfParse = require('pdf-parse');
-const fs = require('fs');
 
 const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
 
-// 1. Get Settings for a Phase
-const getConfig = async (req, res) => {
+// 1. Fetch CRM Configurations
+const getCrmConfig = async (req, res) => {
     try {
-        const { phase } = req.params;
-        let config = await prisma.crm_campaigns.findFirst({ where: { phase } });
-        if (!config) {
-            config = { phase, meta_number: '', meta_phone_id: '', meta_wa_id: '', meta_access_token: '', gemini_keys: [''], is_gemini_active: true };
-        }
-        res.status(200).json(safeJson(config));
-    } catch (error) { res.status(500).json({ error: error.message }); }
-};
+        const { businessId } = req.params;
+        const configs = await prisma.crm_configs.findMany({ where: { business_id: BigInt(businessId) } });
+        const files = await prisma.crm_training_files.findMany({ where: { business_id: BigInt(businessId) } });
 
-// 2. Save Settings for a Phase
-const saveConfig = async (req, res) => {
-    try {
-        const { phase, batch_id, meta_number, meta_phone_id, meta_wa_id, meta_access_token, gemini_keys, is_gemini_active } = req.body;
-        
-        const existing = await prisma.crm_campaigns.findFirst({ where: { phase } });
-        if (existing) {
-            await prisma.crm_campaigns.update({
-                where: { id: existing.id },
-                data: { batch_id: batch_id ? BigInt(batch_id) : existing.batch_id, meta_number, meta_phone_id, meta_wa_id, meta_access_token, gemini_keys, is_gemini_active }
-            });
-        } else {
-            await prisma.crm_campaigns.create({
-                data: { phase, batch_id: batch_id ? BigInt(batch_id) : BigInt(1), meta_number, meta_phone_id, meta_wa_id, meta_access_token, gemini_keys, is_gemini_active }
-            });
-        }
-        res.status(200).json({ message: "Settings Saved!" });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-};
+        const result = {
+            FREE_SEMINAR: { isActive: false, isAiBotActive: false, isAutoReplyActive: false, batchId: '', metaPhoneId: '', metaWabaId: '', metaToken: '', geminiKeys: ['', '', '', '', ''], replies: [{text:''}, {text:''}, {text:''}], trainedFiles: [], handoffLimit: 5 },
+            AFTER_SEMINAR: { isActive: false, isAiBotActive: false, isAutoReplyActive: false, batchId: '', metaPhoneId: '', metaWabaId: '', metaToken: '', geminiKeys: ['', '', '', '', ''], replies: [{text:''}, {text:''}, {text:''}], trainedFiles: [], handoffLimit: 5 }
+        };
 
-// 3. 🔴 LIVE TERMINAL STREAMING (PDF INGESTION) 🔴
-const ingestDocument = async (req, res) => {
-    // Set headers for Server-Sent Events (Live Streaming)
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Transfer-Encoding', 'chunked');
+        configs.forEach(c => {
+            const phase = c.phase;
 
-    const writeLog = (msg) => res.write(`${msg}\n`);
+            // 🔥 FIX: Safe JSON Parsing (DB එකේ වැරදි Data තිබ්බත් මේක Crash වෙන්නේ නෑ) 🔥
+            let parsedGemini = ['', '', '', '', ''];
+            let parsedReplies = [{text:''}, {text:''}, {text:''}];
+            
+            try { if (c.gemini_keys) parsedGemini = JSON.parse(c.gemini_keys); } catch(e) { console.log("Gemini parse error bypassed"); }
+            try { if (c.auto_replies) parsedReplies = JSON.parse(c.auto_replies); } catch(e) { console.log("Replies parse error bypassed"); }
 
-    try {
-        if (!req.file) { writeLog("❌ Error: No file uploaded"); return res.end(); }
-        const { phase } = req.body;
-        const filePath = req.file.path;
-        const fileName = req.file.originalname;
-
-        writeLog(`✅ Started Ingestion for Phase: ${phase}`);
-        writeLog(`📂 Reading PDF File: ${fileName}...`);
-        
-        // Add a small delay to mimic connection/processing for UI UX
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        writeLog(`⏳ Connecting to Gemini Brain Engine...`);
-
-        // Read PDF
-        const dataBuffer = fs.readFileSync(filePath);
-        const pdfData = await pdfParse(dataBuffer);
-        
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        writeLog(`✅ PDF Parsed Successfully! Found ${pdfData.numpages} pages.`);
-        writeLog(`🧠 Chunking text and generating vectors...`);
-
-        // Save to Database
-        await prisma.crm_documents.create({
-            data: { phase, file_name: fileName, content: pdfData.text }
+            result[phase] = {
+                isAiBotActive: c.is_ai_active || false,
+                isAutoReplyActive: c.is_auto_reply_active || false,
+                isActive: c.is_ai_active || c.is_auto_reply_active || false,
+                batchId: c.batch_id ? c.batch_id.toString() : '',
+                metaPhoneId: c.meta_phone_id || '',
+                metaWabaId: c.meta_waba_id || '',
+                metaToken: c.meta_token || '',
+                geminiKeys: parsedGemini,
+                replies: parsedReplies,
+                handoffLimit: c.handoff_limit || 5,
+                trainedFiles: files.filter(f => f.phase === phase).map(f => ({ name: f.original_name, size: f.size, type: f.type, url: `http://72.62.249.211:5000/storage/crm_files/${f.file_name}` }))
+            };
         });
 
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        writeLog(`🎉 Complete! Knowledge Base Updated.`);
-        
-        // Cleanup file
-        fs.unlinkSync(filePath);
-        res.end();
+        res.status(200).json(safeJson(result));
     } catch (error) {
-        writeLog(`❌ Critical Error: ${error.message}`);
-        res.end();
+        console.error("Fetch CRM Error:", error); // Terminal එකේ Error එක හරියටම බලාගන්න පුළුවන්
+        res.status(500).json({ error: "Failed to fetch CRM config" });
     }
 };
 
-// 4. Get & Delete Documents
-const getDocuments = async (req, res) => {
+// 2. Save CRM Configurations & Files
+const saveCrmConfig = async (req, res) => {
     try {
-        const docs = await prisma.crm_documents.findMany({ where: { phase: req.params.phase }, select: { id: true, file_name: true, created_at: true } });
-        res.status(200).json(docs);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+        const { businessId, configData } = req.body;
+        const config = JSON.parse(configData);
+        const bId = BigInt(businessId);
+
+        const phases = ['FREE_SEMINAR', 'AFTER_SEMINAR'];
+        
+        for (const phase of phases) {
+            const data = config[phase];
+            const updatedReplies = [...data.replies];
+
+            // Attach files to auto replies if uploaded
+            for (let i = 0; i < 3; i++) {
+                if (req.files && req.files[`replyFile_${phase}_${i}`]) {
+                    updatedReplies[i].fileName = req.files[`replyFile_${phase}_${i}`][0].filename;
+                }
+            }
+
+            const existing = await prisma.crm_configs.findFirst({ where: { business_id: bId, phase } });
+            
+            const dbData = {
+                is_ai_active: data.isAiBotActive,
+                is_auto_reply_active: data.isAutoReplyActive,
+                batch_id: data.batchId ? BigInt(data.batchId) : null,
+                meta_phone_id: data.metaPhoneId,
+                meta_waba_id: data.metaWabaId,
+                meta_token: data.metaToken,
+                gemini_keys: JSON.stringify(data.geminiKeys),
+                auto_replies: JSON.stringify(updatedReplies),
+                handoff_limit: data.handoffLimit
+            };
+
+            if (existing) {
+                await prisma.crm_configs.update({ where: { id: existing.id }, data: dbData });
+            } else {
+                await prisma.crm_configs.create({ data: { business_id: bId, phase, ...dbData } });
+            }
+
+            // Save new Training Files
+            if (req.files) {
+                const trainingKeys = Object.keys(req.files).filter(k => k.startsWith(`trainedFiles_${phase}`));
+                for (const key of trainingKeys) {
+                    const filesArr = req.files[key];
+                    for (const file of filesArr) {
+                        await prisma.crm_training_files.create({
+                            data: {
+                                business_id: bId,
+                                phase: phase,
+                                file_name: file.filename,
+                                original_name: file.originalname,
+                                size: (file.size / 1024).toFixed(2) + ' KB',
+                                type: file.mimetype
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        res.status(200).json({ message: "CRM Configuration saved successfully!" });
+    } catch (error) {
+        console.error("Save CRM Error:", error);
+        res.status(500).json({ error: "Failed to save CRM config" });
+    }
 };
 
-const deleteDocument = async (req, res) => {
+// 3. Delete a Training File
+const deleteTrainingFile = async (req, res) => {
     try {
-        await prisma.crm_documents.delete({ where: { id: parseInt(req.params.id) } });
-        res.status(200).json({ message: "Deleted" });
-    } catch (error) { res.status(500).json({ error: error.message }); }
+        const { businessId, phase, fileName } = req.body;
+        // Delete from DB (Optional: also delete from local storage using fs.unlink)
+        await prisma.crm_training_files.deleteMany({
+            where: { business_id: BigInt(businessId), phase: phase, original_name: fileName }
+        });
+        res.status(200).json({ message: "File deleted successfully" });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to delete file" });
+    }
 };
 
-module.exports = { getConfig, saveConfig, ingestDocument, getDocuments, deleteDocument };
+module.exports = { getCrmConfig, saveCrmConfig, deleteTrainingFile };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, FolderOpen, Layers, BookOpen, Plus, Edit3, Trash2, ChevronRight, ChevronDown, X, ArrowLeft, GripVertical, CheckCircle, FolderPlus, Video, MonitorPlay, FileText, FileSignature, ExternalLink, Ban, Power, Building2, UserPlus, CreditCard, Send } from 'lucide-react';
+import { Loader2, FolderOpen, Layers, BookOpen, Plus, Edit3, Trash2, ChevronRight, ChevronDown, X, ArrowLeft, GripVertical, CheckCircle, FolderPlus, Video, MonitorPlay, FileText, FileSignature, ExternalLink, Ban, Power, Building2, UserPlus, CreditCard, Send, UploadCloud, Users } from 'lucide-react';
 import api from '../../api/axios';
 
 
@@ -261,7 +261,6 @@ export default function ContentHub() {
   // ==========================================
   // INSTALLMENTS CRUD 
   // ==========================================
-  // ... (Installment Functions remain exactly the same)
   const openInstallmentModal = async () => {
       setInstallmentSubjectCount('');
       setInstallmentSteps([{step: 1, amount: '', gapDays: '0'}]);
@@ -320,7 +319,6 @@ export default function ContentHub() {
       const formData = new FormData(e.target);
       
       try {
-          // අපි අලුතින් හදපු Route එකට යවනවා
           await api.post('/admin/manager/post/create', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
           toast.success("Post Published & Notifications Sent Successfully!");
           setShowPostModal(false);
@@ -457,10 +455,11 @@ export default function ContentHub() {
   if (loading) return <div className="flex h-full items-center justify-center"><Loader2 size={50} className="animate-spin text-blue-500" /></div>;
 
   return (
-    <div className="w-full text-slate-200 animate-in fade-in duration-500 h-full flex flex-col font-sans pb-4">
+    // 🔥 FIX: 'h-full' removed from here, so it scrolls dynamically under the header! 🔥
+    <div className="w-full text-slate-200 animate-in fade-in duration-500 flex flex-col font-sans pb-4">
       
       {/* --- HEADER --- */}
-      <div className="mb-8 bg-slate-800/30 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl flex flex-col gap-5 shadow-lg">
+      <div className="mb-8 bg-slate-800/30 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl flex flex-col gap-5 shadow-lg shrink-0">
           <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-400">
               {viewLevel !== 'businesses' && <button onClick={() => handleBack(viewLevel==='contents' ? 'batch_details' : viewLevel==='batch_details' ? 'batches' : 'businesses')} className="hover:text-blue-400 flex items-center gap-2 bg-white/5 px-4 py-2 rounded-xl transition-colors"><ArrowLeft size={16}/> Back</button>}
               {isSystemAdmin && <button onClick={() => handleBack('businesses')} className={`hover:text-white transition-colors ${viewLevel==='businesses' ? 'text-white font-bold' : ''}`}>Businesses</button>}
@@ -514,8 +513,9 @@ export default function ContentHub() {
           </div>
       </div>
 
-      {/* --- Rest of the UI remains the same (Lists, Folders, etc) --- */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 relative">
+      {/* --- CONTENT LIST --- */}
+      {/* 🔥 FIX: 'flex-1 overflow-y-auto' removed from here, so layout naturally pushes it down 🔥 */}
+      <div className="w-full space-y-6 relative">
           {viewLevel === 'businesses' && isSystemAdmin && (
               businesses.length === 0 ? <p className="text-center text-slate-400 py-16 bg-slate-800/30 rounded-3xl border border-white/10 backdrop-blur-xl text-lg">No businesses created yet.</p> : 
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -769,132 +769,163 @@ export default function ContentHub() {
       </div>
 
       {/* --- MODALS --- */}
-      {/* (Other existing modals like showBusinessModal, showBatchModal, showGroupModal, showCourseModal, showLessonGroupModal, showContentModal, previewData stay here unchanged) */}
       
-      {/* 🔥 NEW POST MODAL 🔥 */}
+      {/* 🔥 NEW POST MODAL (LANDSCAPE DESIGN) 🔥 */}
       {showPostModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4 animate-in fade-in duration-200">
-            <div className="bg-slate-800/90 border border-white/10 rounded-3xl p-8 w-full max-w-2xl shadow-2xl backdrop-blur-2xl">
-                <div className="flex justify-between items-center mb-8">
+            <div className="bg-slate-800/90 border border-white/10 rounded-[2rem] p-8 w-full max-w-4xl shadow-2xl backdrop-blur-2xl flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4 shrink-0">
                     <h3 className="text-2xl font-bold text-white flex items-center gap-3"><Send className="text-purple-400"/> Create Announcement</h3>
-                    <button onClick={() => setShowPostModal(false)} className="text-slate-400 hover:text-white bg-white/5 p-2.5 rounded-xl border border-white/5"><X size={20}/></button>
+                    <button onClick={() => setShowPostModal(false)} className="text-slate-400 hover:text-white bg-white/5 p-2.5 rounded-xl border border-white/5 transition-all hover:bg-red-500"><X size={20}/></button>
                 </div>
-                <form onSubmit={handlePostSubmit} className="space-y-6">
-                    <div>
-                        <label className="text-sm font-semibold text-slate-300 mb-2 block">Post Title *</label>
-                        <input type="text" name="title" required className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-purple-500" />
-                    </div>
-                    <div>
-                        <label className="text-sm font-semibold text-slate-300 mb-2 block">Description *</label>
-                        <textarea name="description" required rows="3" className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-purple-500"></textarea>
-                    </div>
-                    <div>
-                        <label className="text-sm font-semibold text-slate-300 mb-2 block">Image (Optional)</label>
-                        <input type="file" name="image" accept="image/*" className="w-full bg-black/20 border border-white/10 rounded-xl p-2.5 text-white" />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-purple-500/10 p-5 rounded-2xl border border-purple-500/20">
-                        <div>
-                            <label className="text-sm font-semibold text-purple-300 mb-2 block">Target Business</label>
-                            <select name="businessId" value={postBizId} onChange={(e) => setPostBizId(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none">
-                                {isSystemAdmin ? (
-                                    <>
-                                        <option value="all">All Businesses (Global Post)</option>
-                                        {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                                    </>
-                                ) : (
-                                    <option value={activeBusiness?.id}>{activeBusiness?.name}</option>
-                                )}
-                            </select>
+                
+                <form onSubmit={handlePostSubmit} className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+                    <div className="flex flex-col md:flex-row gap-6 h-full">
+                        {/* Left Side: Post Details */}
+                        <div className="flex-1 space-y-6">
+                            <div>
+                                <label className="text-sm font-semibold text-slate-300 mb-2 block">Post Title *</label>
+                                <input type="text" name="title" required className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-purple-500 transition-colors" />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-sm font-semibold text-slate-300 mb-2 block">Description *</label>
+                                <textarea name="description" required rows="6" className="w-full h-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-purple-500 transition-colors resize-none"></textarea>
+                            </div>
                         </div>
-                        <div>
-    <label className="text-sm font-semibold text-purple-300 mb-2 block">Target Batch</label>
-    <select name="batchId" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none">
-        <option value="all">All Batches</option>
-        {postBatches.map(b => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-        ))}
-    </select>
-</div>
-                        <p className="text-xs text-purple-300/70 md:col-span-2">
-                            * Posts targeted to "All" will reach all registered students, even if they haven't enrolled in a specific class yet.
-                        </p>
+
+                        {/* Right Side: Targeting & Image */}
+                        <div className="w-full md:w-80 flex flex-col gap-6 shrink-0">
+                            <div>
+                                <label className="text-sm font-semibold text-slate-300 mb-2 block">Attach Image (Optional)</label>
+                                <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-white/20 rounded-xl bg-black/20 cursor-pointer hover:bg-white/5 transition-colors hover:border-purple-500/50">
+                                    <UploadCloud size={28} className="text-slate-400 mb-2"/>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Click to Upload</span>
+                                    <input type="file" name="image" accept="image/*" className="hidden" />
+                                </label>
+                            </div>
+
+                            <div className="bg-purple-500/10 p-5 rounded-2xl border border-purple-500/20 space-y-4">
+                                <h4 className="text-sm font-bold text-purple-300 uppercase tracking-widest flex items-center gap-2 mb-2"><Users size={16}/> Target Audience</h4>
+                                <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Select Business</label>
+                                    <select name="businessId" value={postBizId} onChange={(e) => setPostBizId(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-purple-500">
+                                        {isSystemAdmin ? (
+                                            <>
+                                                <option value="all">All Businesses (Global)</option>
+                                                {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                            </>
+                                        ) : (
+                                            <option value={activeBusiness?.id}>{activeBusiness?.name}</option>
+                                        )}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Select Batch</label>
+                                    <select name="batchId" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-purple-500">
+                                        <option value="all">All Batches</option>
+                                        {postBatches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 text-lg rounded-2xl shadow-lg mt-4 flex justify-center items-center gap-2">
-                        {loading ? <Loader2 className="animate-spin" size={24}/> : <><Send size={20}/> Publish Post & Send Push</>}
-                    </button>
+                    <div className="pt-4 border-t border-white/10 shrink-0">
+                        <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white font-bold py-4 text-base rounded-2xl shadow-lg flex justify-center items-center gap-2 transition-transform hover:scale-[1.01] disabled:opacity-70 disabled:scale-100">
+                            {loading ? <Loader2 className="animate-spin" size={20}/> : <><Send size={18}/> Publish Post & Send Push Notification</>}
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
       )}
 
-      {/* OTHER EXISTING MODALS */}
-      {previewData && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4 animate-in fade-in duration-300">
-              <div className="bg-slate-800/90 border border-white/10 rounded-3xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden backdrop-blur-2xl">
-                  <div className="p-6 border-b border-white/10 flex justify-between items-center">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-3"><MonitorPlay size={24} className="text-blue-400"/> {previewData.title}</h3>
-                      <div className="flex gap-3">
-                          <a href={previewData.link || `http://72.62.249.211:5000/documents/${previewData.fileName}`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors">
-                              <ExternalLink size={18}/> Open External
-                          </a>
-                          <button onClick={() => setPreviewData(null)} className="text-slate-400 hover:text-white bg-white/5 hover:bg-red-500 border border-white/5 p-2.5 rounded-xl transition-colors"><X size={20}/></button>
-                      </div>
-                  </div>
-                  <div className="flex-1 bg-black/40 p-4 relative flex items-center justify-center">
-                      {previewData.fileName ? (
-                          <iframe src={`http://72.62.249.211:5000/documents/${previewData.fileName}`} className="w-full h-full rounded-2xl bg-white" title="Document Preview" />
-                      ) : previewData.link ? (
-                          <iframe src={getEmbedUrl(previewData.link)} className="w-full h-full rounded-2xl bg-black border border-white/10" title="Video/Live Preview" allowFullScreen />
-                      ) : (
-                          <div className="text-center text-slate-500"><Ban size={48} className="mx-auto mb-4 opacity-50"/><p className="text-lg font-medium">No preview available.</p></div>
-                      )}
-                  </div>
-              </div>
-          </div>
-      )}
 
+      {/* 🔥 ADD/EDIT BUSINESS MODAL (LANDSCAPE DESIGN) 🔥 */}
       {showBusinessModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4 animate-in fade-in duration-200">
-              <div className="bg-slate-800/90 border border-white/10 rounded-3xl p-8 w-full max-w-2xl shadow-2xl backdrop-blur-2xl">
-                <div className="flex justify-between items-center mb-8"><h3 className="text-2xl font-bold text-white">{editMode ? 'Edit Business' : 'New Business'}</h3><button onClick={() => setShowBusinessModal(false)} className="text-slate-400 hover:text-white bg-white/5 p-2.5 rounded-xl border border-white/5"><X size={20}/></button></div>
-                <form onSubmit={handleBusinessSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Business Name *</label><input type="text" name="name" defaultValue={editData?.name} required className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500" /></div>
-                        <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Logo *</label><input type="file" name="logo" required={!editMode} className="w-full bg-black/20 border border-white/10 rounded-xl p-2.5 text-white" /></div>
-                        <div>
-                            <label className="text-sm font-semibold text-slate-300 mb-2 block">Medium *</label>
-                            <select name="medium" defaultValue={editData?.isEnglish ? 'English' : 'Sinhala'} required className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500">
-                                <option value="Sinhala" className="bg-slate-800">Sinhala</option><option value="English" className="bg-slate-800">English</option>
-                            </select>
+              <div className="bg-slate-800/90 border border-white/10 rounded-[2rem] p-8 w-full max-w-5xl shadow-2xl backdrop-blur-2xl flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4 shrink-0">
+                    <h3 className="text-2xl font-bold text-white flex items-center gap-3"><Building2 className="text-blue-400"/> {editMode ? 'Edit Business Configuration' : 'Setup New Business'}</h3>
+                    <button onClick={() => setShowBusinessModal(false)} className="text-slate-400 hover:text-white bg-white/5 p-2.5 rounded-xl border border-white/5 transition-all hover:bg-red-500"><X size={20}/></button>
+                </div>
+                
+                <form onSubmit={handleBusinessSubmit} className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+                    <div className="flex flex-col lg:flex-row gap-8">
+                        
+                        {/* Left Column: Basic Info */}
+                        <div className="flex-1 space-y-5">
+                            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-white/5 pb-2">Basic Information</h4>
+                            <div className="grid grid-cols-2 gap-5">
+                                <div className="col-span-2">
+                                    <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Business Name *</label>
+                                    <input type="text" name="name" defaultValue={editData?.name} required className="w-full bg-black/20 border border-white/10 rounded-xl p-3.5 text-sm text-white outline-none focus:border-blue-500 transition-colors" placeholder="e.g. Science Academy" />
+                                </div>
+                                <div className="col-span-2 sm:col-span-1">
+                                    <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Category *</label>
+                                    <select name="category" defaultValue={editData?.category || "Advance Level"} required onChange={(e) => { document.getElementById('streamsDiv').style.display = (e.target.value === 'Advance Level' || e.target.value === 'AL') ? 'block' : 'none'; }} className="w-full bg-black/20 border border-white/10 rounded-xl p-3.5 text-sm text-white outline-none focus:border-blue-500 cursor-pointer">
+                                        <option value="Advance Level" className="bg-slate-800">Advance Level</option>
+                                        <option value="Ordinary Level" className="bg-slate-800">Ordinary Level</option>
+                                        <option value="Others" className="bg-slate-800">Others</option>
+                                    </select>
+                                </div>
+                                <div className="col-span-2 sm:col-span-1">
+                                    <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Medium *</label>
+                                    <select name="medium" defaultValue={editData?.isEnglish ? 'English' : 'Sinhala'} required className="w-full bg-black/20 border border-white/10 rounded-xl p-3.5 text-sm text-white outline-none focus:border-blue-500 cursor-pointer">
+                                        <option value="Sinhala" className="bg-slate-800">Sinhala Medium</option>
+                                        <option value="English" className="bg-slate-800">English Medium</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Description (Optional)</label>
+                                <textarea name="description" defaultValue={editData?.description} rows="3" className="w-full bg-black/20 border border-white/10 rounded-xl p-3.5 text-sm text-white outline-none focus:border-blue-500 resize-none"></textarea>
+                            </div>
                         </div>
-                        <div>
-                            <label className="text-sm font-semibold text-slate-300 mb-2 block">Category *</label>
-                            <select name="category" defaultValue={editData?.category || "Advance Level"} required onChange={(e) => { document.getElementById('streamsDiv').style.display = (e.target.value === 'Advance Level' || e.target.value === 'AL') ? 'block' : 'none'; }} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500">
-                                <option value="Advance Level" className="bg-slate-800">Advance Level</option><option value="Ordinary Level" className="bg-slate-800">Ordinary Level</option><option value="Others" className="bg-slate-800">Others</option>
-                            </select>
+
+                        {/* Right Column: Settings & Uploads */}
+                        <div className="w-full lg:w-96 space-y-5 shrink-0">
+                            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-white/5 pb-2">Branding & Logic</h4>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Business Logo *</label>
+                                <label className="flex items-center justify-center h-20 border-2 border-dashed border-white/20 rounded-xl bg-black/20 cursor-pointer hover:bg-white/5 transition-colors hover:border-blue-500/50">
+                                    <div className="flex items-center gap-3">
+                                        <UploadCloud size={24} className="text-blue-400"/>
+                                        <span className="text-xs text-slate-300 font-bold">Select Image File</span>
+                                    </div>
+                                    <input type="file" name="logo" required={!editMode} accept="image/*" className="hidden" />
+                                </label>
+                            </div>
+
+                            <div id="streamsDiv" style={{display: (editData?.category === 'Advance Level' || editData?.category === 'AL' || !editData) ? 'block' : 'none'}} className="bg-blue-500/10 p-4 rounded-xl border border-blue-500/20">
+                                <label className="text-xs font-bold text-blue-300 mb-3 block uppercase tracking-wider">A/L Streams (Select all that apply)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {['Art', 'Commerce', 'Tech', 'Bio', 'Maths'].map(s => (
+                                        <label key={s} className="flex items-center gap-2 cursor-pointer text-white text-xs font-medium bg-black/30 px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10 transition-colors">
+                                            <input type="checkbox" name={`stream_${s}`} value={s} defaultChecked={editData?.streams?.includes(s)} className="w-3.5 h-3.5 accent-blue-500"/> {s}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div className="bg-orange-500/10 p-4 rounded-xl border border-orange-500/20">
+                                <label className="flex items-start gap-3 cursor-pointer group">
+                                    <input type="checkbox" name="isDiscountEnabledForInstallments" value="1" defaultChecked={editData?.isDiscountEnabledForInstallments} className="w-5 h-5 accent-orange-500 mt-0.5 shrink-0"/>
+                                    <div>
+                                        <span className="text-sm font-bold text-white group-hover:text-orange-300 transition-colors">Allow Installment Discounts?</span>
+                                        <p className="text-[10px] text-orange-200/60 mt-1 leading-tight">If ticked, students paying via installments will still receive the bundle discount.</p>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
-                        <div className="md:col-span-2"><label className="text-sm font-semibold text-slate-300 mb-2 block">Description</label><textarea name="description" defaultValue={editData?.description} rows="2" className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500"></textarea></div>
-                    </div>
-                    <div id="streamsDiv" style={{display: (editData?.category === 'Advance Level' || editData?.category === 'AL' || !editData) ? 'block' : 'none'}} className="bg-blue-500/10 p-4 rounded-xl border border-blue-500/20">
-                        <label className="text-sm font-bold text-blue-300 mb-3 block">Select Streams</label>
-                        <div className="flex flex-wrap gap-4">
-                            {['Art', 'Commerce', 'Tech', 'Bio', 'Maths'].map(s => (
-                                <label key={s} className="flex items-center gap-2 cursor-pointer text-white font-medium bg-black/20 p-2 rounded-lg border border-white/10 hover:bg-white/10"><input type="checkbox" name={`stream_${s}`} value={s} defaultChecked={editData?.streams?.includes(s)} className="w-4 h-4"/> {s}</label>
-                            ))}
-                        </div>
-                    </div>
-                    
-                    <div className="mt-4">
-                        <label className="flex items-center gap-3 cursor-pointer text-white font-medium bg-orange-500/10 p-4 rounded-xl border border-orange-500/20 hover:bg-orange-500/20 transition-colors">
-                            <input type="checkbox" name="isDiscountEnabledForInstallments" value="1" defaultChecked={editData?.isDiscountEnabledForInstallments} className="w-5 h-5 accent-orange-500"/>
-                            Allow Bundle Discounts even if student pays via Installments?
-                        </label>
-                        <p className="text-xs text-gray-400 mt-2 ml-2">If UNTICKED: Students choosing installments will NOT get the bundle discount.</p>
                     </div>
 
-                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 text-lg rounded-2xl shadow-lg mt-4">{editMode ? 'Update Business' : 'Create Business'}</button>
+                    <div className="pt-6 border-t border-white/10 mt-6 shrink-0">
+                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 text-base rounded-2xl shadow-lg transition-transform hover:scale-[1.01] uppercase tracking-wide flex justify-center items-center gap-2">
+                            {editMode ? 'Update Business Settings' : 'Initialize New Business'}
+                        </button>
+                    </div>
                 </form>
               </div>
           </div>
@@ -1256,6 +1287,32 @@ export default function ContentHub() {
                               </>
                           )}
                       </form>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* PREVIEW MODAL */}
+      {previewData && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4 animate-in fade-in duration-300">
+              <div className="bg-slate-800/90 border border-white/10 rounded-3xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden backdrop-blur-2xl">
+                  <div className="p-6 border-b border-white/10 flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-white flex items-center gap-3"><MonitorPlay size={24} className="text-blue-400"/> {previewData.title}</h3>
+                      <div className="flex gap-3">
+                          <a href={previewData.link || `http://72.62.249.211:5000/documents/${previewData.fileName}`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors">
+                              <ExternalLink size={18}/> Open External
+                          </a>
+                          <button onClick={() => setPreviewData(null)} className="text-slate-400 hover:text-white bg-white/5 hover:bg-red-500 border border-white/5 p-2.5 rounded-xl transition-colors"><X size={20}/></button>
+                      </div>
+                  </div>
+                  <div className="flex-1 bg-black/40 p-4 relative flex items-center justify-center">
+                      {previewData.fileName ? (
+                          <iframe src={`http://72.62.249.211:5000/documents/${previewData.fileName}`} className="w-full h-full rounded-2xl bg-white" title="Document Preview" />
+                      ) : previewData.link ? (
+                          <iframe src={getEmbedUrl(previewData.link)} className="w-full h-full rounded-2xl bg-black border border-white/10" title="Video/Live Preview" allowFullScreen />
+                      ) : (
+                          <div className="text-center text-slate-500"><Ban size={48} className="mx-auto mb-4 opacity-50"/><p className="text-lg font-medium">No preview available.</p></div>
+                      )}
                   </div>
               </div>
           </div>

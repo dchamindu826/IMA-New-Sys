@@ -5,7 +5,7 @@ import { Toaster } from 'react-hot-toast';
 // --- Web Pages ---
 import Home from './web/pages/Home';
 
-// --- Student Pages (🔥 මේ Imports ටික අනිවාර්යයි 🔥) ---
+// --- Student Pages ---
 import StudentDashboard from './pages/student/StudentDashboard';
 import CourseView from "./pages/student/components/CourseView";  
 
@@ -19,28 +19,27 @@ import MainLayout from './layouts/MainLayout';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 
-// --- Admin Pages (System Admin / Director) ---
+// --- Admin Pages ---
 import AdminDashboard from './pages/admin/AdminDashboard';
 import PaymentHub from './pages/admin/PaymentHub';
 import StaffManager from './pages/admin/StaffManager';
 import BatchManager from './pages/admin/BatchManager';
+import AdminCrmSetup from './pages/admin/AdminCrmSetup'; // 🔥 මේක ආයෙත් ගෙනාවා (Admin Setup එක වෙනම තියෙන්න ඕනේ)
 
-// --- Manager Pages (Head Manager / Ass Manager) ---
+// --- Manager Pages ---
 import ManagerDashboard from './pages/manager/ManagerDashboard'; 
 import ManagerTimetable from './pages/manager/ManagerTimetable';
 import ManagerStaff from './pages/manager/ManagerStaff';
 import ManagerTasks from './pages/manager/ManagerTasks';
 import ManagerPayments from './pages/manager/ManagerPayments';
-import ManagerCRM from './pages/manager/ManagerCRM';
 
-// --- Coordinators imports ---
+// --- Coordinators Pages ---
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import CoordinatorTasks from './pages/coordinator/CoordinatorTasks';
-import StaffCRM from "./pages/coordinator/StaffCRM";
 
-// --- Finance Department ---
-import FinanceDashboard from './pages/finance/FinanceDashboard';
-import SlipVerification from './pages/finance/SlipVerification';
+// 🔥 NEW: CRM Pages (Unified) 🔥
+import StaffCRM from "./pages/crm/StaffCRM";
+import ManagerCRM from "./pages/crm/ManagerCRM";
 
 function App() {
   const [loggedInUser, setLoggedInUser] = useState(null);
@@ -60,15 +59,13 @@ function App() {
     setLoggedInUser(null);
   };
 
-  // Role-based Default Route
   const getDefaultDashboard = (role) => {
-      // 🔥 FIX: 'superadmin' කියන Role එකත් මෙතනට ඇතුලත් කරා 🔥
       if(role === 'System Admin' || role === 'superadmin' || role === 'Director') return "/admin/dashboard";
       if(role === 'Manager' || role === 'Ass Manager') return "/manager/dashboard";
       if(role === 'Coordinator' || role === 'Staff') return "/coordinator/dashboard";
       if(role === 'Finance') return "/admin/finance";
       if(role === 'user' || role === 'student') return "/student/dashboard"; 
-      return "/login"; // Default
+      return "/login";
   };
 
   if (loading) return <div className="min-h-screen bg-[#0A0F1C] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
@@ -83,52 +80,43 @@ function App() {
       />
 
       <Routes>
-        {/* PUBLIC WEBSITE ROUTES  */}
         <Route path="/" element={<Home loggedInUser={loggedInUser} />} />
-
-        {/* AUTH ROUTES */}
         <Route path="/login" element={!loggedInUser ? <Login setLoggedInUser={setLoggedInUser} /> : <Navigate to={getDefaultDashboard(loggedInUser?.role)} replace />} />
         <Route path="/register" element={!loggedInUser ? <Register /> : <Navigate to={getDefaultDashboard(loggedInUser?.role)} replace />} />
 
-        {/* PROTECTED ROUTES (MainLayout එක ඇතුලේ) */}
         <Route element={loggedInUser ? <MainLayout loggedInUser={loggedInUser} handleLogout={handleLogout} /> : <Navigate to="/login" replace />}>
-
-          {/* --- ADMIN ROUTES --- */}
+          
           <Route path="admin/dashboard" element={<AdminDashboard />} />
-          <Route path="/admin/payments" element={<PaymentHub />} />
+          <Route path="admin/payments" element={<PaymentHub />} />
           <Route path="admin/staff" element={<StaffManager />} />
           <Route path="admin/batches/:businessId" element={<BatchManager />} />
           <Route path="admin/content-hub" element={<ContentHub />} />
+          
+          {/* 🔥 FIX: AdminCrmSetup එක Sidebar එකේ ලින්ක් එකට මැච් වෙන්න දැම්මා 🔥 */}
+          <Route path="admin/crm-setup" element={<AdminCrmSetup />} />
 
-          {/* --- MANAGER ROUTES --- */}
           <Route path="manager/dashboard" element={<ManagerDashboard />} />
           <Route path="manager/timetable" element={<ManagerTimetable />} />
           <Route path="manager/tasks" element={<ManagerTasks />} />
           <Route path="manager/staff" element={<ManagerStaff />} />
           <Route path="manager/content-hub" element={<ContentHub />} />
           <Route path="manager/payments" element={<ManagerPayments />} />
-          <Route path="manager/crm" element={<ManagerCRM />} />
 
-          {/* --- COORDINATOR ROUTES --- */}
           <Route path="coordinator/dashboard" element={<CoordinatorDashboard />} />
           <Route path="coordinator/my-tasks" element={<CoordinatorTasks />} />
           <Route path="coordinator/content-hub" element={<ContentHub />} />
-          <Route path="staff/crm" element={<StaffCRM loggedInUser={loggedInUser} />} />
 
-          {/* --- FINANCE DEPARTMENT --- */}
-          <Route path="admin/finance" element={<FinanceDashboard />} />
-          <Route path="admin/finance/verify" element={<SlipVerification />} />
+          {/* 🔥 FIX: Sidebar එකේ ලින්ක්ස් වලට හරියන්න CRM Routes හැදුවා 🔥 */}
+          <Route path="manager/crm" element={<ManagerCRM loggedInUser={loggedInUser} />} />
+          <Route path="staff/crm" element={<StaffCRM loggedInUser={loggedInUser} />} />
 
         </Route>
 
-        {/* Default Catch-all Route (වැරදි ලින්ක් එකකට ගියොත් Home එකට යවනවා) */}
         <Route path="*" element={<Navigate to="/" replace />} />
-
-        {/* --- STUDENT ROUTES (මේ ටික <Routes> ඇතුළට ගත්තා) --- */}
         <Route path="student/dashboard" element={<StudentDashboard />} />
         <Route path="/student/course/:courseId" element={<CourseView />} />
         
-      </Routes> {/* <-- Routes tag එක close වෙන්නේ මෙතනින් */}
+      </Routes>
     </Router>
   );
 }

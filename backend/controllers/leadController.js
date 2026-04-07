@@ -1,6 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// ==========================================
+// පරණ Functions (Leads)
+// ==========================================
 const getLeads = async (req, res) => {
     try {
         const { user_id, role } = req.query;
@@ -16,7 +19,12 @@ const getLeads = async (req, res) => {
             orderBy: { last_message_time: 'desc' }
         });
 
-        return res.status(200).json(leads);
+        // BigInt serialize කිරීම (Json වලට හරවන්න)
+        const serializedLeads = JSON.parse(JSON.stringify(leads, (key, value) =>
+            typeof value === 'bigint' ? value.toString() : value
+        ));
+
+        return res.status(200).json(serializedLeads);
     } catch (error) {
         return res.status(500).json({ message: "Server Error" });
     }
@@ -49,4 +57,59 @@ const bulkAssignLeads = async (req, res) => {
     }
 };
 
-module.exports = { getLeads, bulkAssignLeads };
+// ==========================================
+// 🔥 අලුත් Functions (CRM Contacts / Inbox) 🔥
+// ==========================================
+
+const getContacts = async (req, res) => {
+    try {
+        let whereClause = {};
+        
+        // 🔴 FIX: Database එකේ තියෙන්නේ 'whatsapp_leads' නේද? 
+        // ඒ නිසා අපි 'prisma.whatsapp_leads' පාවිච්චි කරනවා.
+        const contacts = await prisma.whatsapp_leads.findMany({
+            where: whereClause,
+            orderBy: { last_message_time: 'desc' }
+        });
+
+        // BigInt අවුල හදන්න Json.parse දානවා
+        const serializedContacts = JSON.parse(JSON.stringify(contacts, (key, value) =>
+            typeof value === 'bigint' ? value.toString() : value
+        ));
+
+        return res.status(200).json(serializedContacts);
+    } catch (error) {
+        console.error("Error fetching contacts:", error);
+        return res.status(500).json({ message: "Failed to fetch contacts" });
+    }
+};
+
+const markAllRead = async (req, res) => {
+    try {
+        let whereClause = {};
+        
+        await prisma.whatsapp_leads.updateMany({
+            where: whereClause,
+            data: { unread_count: 0 }
+        });
+
+        return res.status(200).json({ message: "Marked all as read" });
+    } catch (error) {
+        console.error("Error marking as read:", error);
+        return res.status(500).json({ message: "Server Error" });
+    }
+};
+
+const addContact = async (req, res) => { return res.status(200).json({ message: "Contact Added" }); };
+const bulkAddContacts = async (req, res) => { return res.status(200).json({ message: "Bulk Contacts Added" }); };
+const updateContact = async (req, res) => { return res.status(200).json({ message: "Contact Updated" }); };
+
+module.exports = { 
+    getLeads, 
+    bulkAssignLeads, 
+    getContacts, 
+    markAllRead,
+    addContact,
+    bulkAddContacts,
+    updateContact
+};

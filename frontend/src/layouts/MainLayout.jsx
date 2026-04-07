@@ -1,49 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import Header from './Header';
 
 export default function MainLayout({ loggedInUser, handleLogout }) {
-  // Theme එක LocalStorage එකෙන් ගන්නවා, නැත්නම් System theme එක බලනවා
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    return localStorage.getItem('theme') === 'dark' || 
-      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [bgImage, setBgImage] = useState(() => {
+    return localStorage.getItem('adminTheme') || '/adminglass.jpg';
   });
 
-  // Theme එක මාරු වෙනකොට HTML tag එකට 'dark' class එක දානවා/අයින් කරනවා
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDarkMode]);
-
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+    localStorage.setItem('adminTheme', bgImage);
+  }, [bgImage]);
 
   return (
-    // Background gradient changes smoothly based on theme
-    <div className="min-h-screen transition-colors duration-500 bg-gradient-to-br from-slate-100 via-blue-50 to-slate-200 dark:from-blue-900 dark:via-slate-800 dark:to-red-900 flex items-center justify-center p-6 font-sans">
+    <div className="relative min-h-screen flex items-center justify-center p-4 md:p-6 font-sans overflow-hidden">
       
-      {/* Glassmorphism Main Container */}
-      <div className="w-full max-w-[100%] xl:max-w-[98%] h-[95vh] bg-white/40 dark:bg-slate-400/10 backdrop-blur-xl border border-white/60 dark:border-slate-400/20 rounded-3xl shadow-2xl flex overflow-hidden transition-colors duration-500">
+      {/* 🚀 Dynamic Background Image 🚀 */}
+      <div className="absolute inset-0 z-0 fixed transition-all duration-1000 ease-in-out">
+          <img src={bgImage} alt="Background" className="w-full h-full object-cover scale-105" />
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[8px]"></div>
+      </div>
+
+      <div className="relative z-10 w-full max-w-[100%] xl:max-w-[98%] h-[95vh] bg-slate-900/40 backdrop-blur-2xl border border-white/10 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex overflow-hidden transition-all duration-500">
         
-        {/* Sidebar */}
-        <Sidebar userRole={loggedInUser?.role} />
+        {/* Sidebar එකට props විදිහට ඔක්කොම යවනවා */}
+        <Sidebar 
+            userRole={loggedInUser?.role} 
+            loggedInUser={loggedInUser} 
+            handleLogout={handleLogout}
+            currentBg={bgImage}
+            setBgImage={setBgImage}
+        />
         
-        {/* Main Content Area */}
+        {/* Main Content Area (Header එක අයින් කරලා Full Height දුන්නා) */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="p-6 pb-2 border-b border-slate-200/50 dark:border-white/5 transition-colors duration-500">
-            <Header 
-              loggedInUser={loggedInUser} 
-              handleLogout={handleLogout} 
-              isDarkMode={isDarkMode} 
-              toggleTheme={toggleTheme} 
-            />
-          </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative z-10">
             <Outlet />
           </div>
         </div>

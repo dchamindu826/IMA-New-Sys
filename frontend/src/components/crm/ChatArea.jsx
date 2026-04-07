@@ -1,126 +1,266 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Layers } from 'lucide-react';
+import { API_BASE_URL } from "../../config";
+import ContactSidebar from "./ContactSidebar";
+import ChatArea from "./ChatArea";
+import CampaignSidebar from "./RightPanel"; 
+import ChatModals from "./ChatModals";
 
-export default function ChatArea({ activeLead, loggedInUser }) {
-  const [message, setMessage] = useState('');
-  const [theme, setTheme] = useState('light');
+export default function UserInbox({ isEmbedded = false, initialSelectedContact = null, activePhase = 'FREE', selectedBiz = null }) {
+  const [contacts, setContacts] = useState([]);
+  const [agents, setAgents] = useState([]);
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
+  
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [fontIndex, setFontIndex] = useState(1);
+  const [theme, setTheme] = useState('blue'); // 🔥 මේක අනිවාර්යයි
+  
+  const currentTheme = { bg: 'bg-slate-900/60 backdrop-blur-xl', bubbleMe: 'bg-blue-600 text-white border-none', bubbleThem: 'bg-slate-800 text-gray-200 border-white/10', header: 'bg-black/40 border-white/10', text: 'text-white', subText: 'text-gray-400', icon: 'text-gray-400 hover:text-white hover:bg-white/10', inputBg: 'bg-black/40 border border-white/10 text-white' };
 
-  const themes = {
-    light: { bg: 'bg-[#efeae2]', bubbleMe: 'bg-[#d9fdd3] text-[#111b21]', bubbleThem: 'bg-white text-[#111b21]', header: 'bg-[#f0f2f5] border-gray-300', text: 'text-[#111b21]', subText: 'text-gray-500', icon: 'text-gray-500 hover:text-gray-700 hover:bg-black/5', inputBg: 'bg-white', patternUrl: 'https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png' },
-    whatsapp: { bg: 'bg-[#0b141a]', bubbleMe: 'bg-[#005c4b] text-white', bubbleThem: 'bg-[#202c33] text-gray-100', header: 'bg-[#202c33] border-slate-600/50', text: 'text-white', subText: 'text-gray-400', icon: 'text-gray-400 hover:text-white hover:bg-white/10', inputBg: 'bg-[#2a3942]' },
-    blue: { bg: 'bg-slate-900', bubbleMe: 'bg-blue-600 text-white', bubbleThem: 'bg-slate-700 text-gray-100', header: 'bg-slate-800 border-slate-600/50', text: 'text-white', subText: 'text-gray-400', icon: 'text-gray-400 hover:text-white hover:bg-white/10', inputBg: 'bg-slate-800' }
-  };
-  const currentTheme = themes[theme];
+  const [activeTab, setActiveTab] = useState('All'); 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAgentFilter, setSelectedAgentFilter] = useState('All');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
+  const [showLeadDetails, setShowLeadDetails] = useState(true);
 
-  // Backend එකෙන් Messages ගන්නවා
-  useEffect(() => {
-    const fetchMessages = async () => {
+  // Batch States
+  const [batches, setBatches] = useState([]);
+  const [selectedBatchFilter, setSelectedBatchFilter] = useState('All');
+
+  const [drafts, setDrafts] = useState({});
+  const newMessage = selectedContact && drafts[selectedContact._id] !== undefined ? drafts[selectedContact._id] : "";
+  const setNewMessage = (val) => { if (selectedContact) setDrafts(prev => ({ ...prev, [selectedContact._id]: val })); };
+  
+  const [sending, setSending] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState(null); 
+  const [uploading, setUploading] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+
+  // 🔥 අලුත් Quick Reply States (ChatArea එකට ඕනේ වෙන ඒවා) 🔥
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [suggestedReplies, setSuggestedReplies] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
+  const [newTemplateTitle, setNewTemplateTitle] = useState('');
+  const [newTemplateMsg, setNewTemplateMsg] = useState('');
+  const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
+  const [templateMediaPreview, setTemplateMediaPreview] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+
+  const activeContactRef = useRef(null);
+  const scrollRef = useRef(); 
+
+  const token = localStorage.getItem('token');
+  const userRole = (localStorage.getItem('role') || '').toLowerCase(); 
+  const userName = localStorage.getItem('name') || 'Agent'; 
+  const userId = localStorage.getItem('id') || localStorage.getItem('userId');
+
+  const loadData = async () => {
       try {
-        setLoading(true);
-        const { data } = await axios.get(`http://72.62.249.211:5000/api/messages/${activeLead.id}`);
-        setMessages(data || []);
-      } catch (error) {
-        console.error("Error fetching messages", error);
-      } finally {
-        setLoading(false);
+          if (!token) return;
+          const headers = { 'Authorization': `Bearer ${token}`, 'token': `Bearer ${token}` };
+
+          const [conRes, agentRes] = await Promise.all([
+              fetch(`${API_BASE_URL}/api/crm/contacts`, { headers }),
+              fetch(`${API_BASE_URL}/api/team/agents`, { headers }) 
+          ]);
+          
+          if(conRes.ok) {
+              const data = await conRes.json();
+              setContacts(Array.isArray(data) ? data : []);
+          }
+          if(agentRes.ok) {
+              const data = await agentRes.json();
+              setAgents(Array.isArray(data) ? data : []);
+          }
+      } catch(err) { console.error("Error loading data:", err); }
+  };
+  
+  useEffect(() => {
+      if (selectedBiz && selectedBiz.id && token) {
+          const headers = { 'Authorization': `Bearer ${token}`, 'token': `Bearer ${token}` };
+          
+          fetch(`${API_BASE_URL}/api/admin/batches/${selectedBiz.id}`, { headers })
+          .then(res => {
+              if (!res.ok) throw new Error("Unauthorized or Fetch Failed");
+              return res.json();
+          })
+          .then(data => {
+              const batchList = Array.isArray(data) ? data : (data.batches || data.data || []);
+              setBatches(batchList);
+          })
+          .catch(e => console.error("Batches Fetch Error:", e));
       }
-    };
-    if (activeLead) fetchMessages();
-  }, [activeLead]);
+  }, [selectedBiz, token]);
+
+  useEffect(() => { 
+      loadData(); 
+      const contactInterval = setInterval(() => loadData(), 15000); 
+      return () => clearInterval(contactInterval);
+  }, [token]);
+
+  useEffect(() => {
+      activeContactRef.current = selectedContact;
+      let msgInterval;
+      if (selectedContact) {
+          const fetchMsgs = () => {
+              fetch(`${API_BASE_URL}/api/crm/messages/${selectedContact._id || selectedContact.id}`, { headers: { token: `Bearer ${token}` } })
+                  .then(res => res.json())
+                  .then(data => { 
+                      if(Array.isArray(data)) {
+                          setMessages(prev => {
+                              if (prev.length !== data.length) return data;
+                              if (prev.length > 0 && data.length > 0 && prev[prev.length-1]._id !== data[data.length-1]._id) return data;
+                              return prev;
+                          });
+                      }
+                  }).catch(err => console.error(err));
+          };
+          fetchMsgs();
+          msgInterval = setInterval(fetchMsgs, 3000);
+          setContacts(prev => prev.map(c => (c._id || c.id) === (selectedContact._id || selectedContact.id) ? { ...c, unreadCount: 0, unread_count: 0 } : c));
+      }
+      return () => { if (msgInterval) clearInterval(msgInterval); }
+  }, [selectedContact, token]);
 
   const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if(!message.trim()) return;
-    
-    try {
-      // මෙය ඇත්තටම Message එක යවන්න Backend API එකට Request එකක් කරනවා
-      await axios.post('http://72.62.249.211:5000/api/messages/send', {
-        lead_id: activeLead.id,
-        content: message,
-        agent_id: loggedInUser.id
-      });
-      
-      // UI එක Update කරනවා
-      setMessages([...messages, { id: Date.now(), sender_type: 'Agent', agent: { first_name: loggedInUser.first_name }, content: message, created_at: new Date() }]);
-      setMessage('');
-    } catch(error) {
-      toast.error("Failed to send message");
-    }
+      if(e) e.preventDefault();
+      if(!selectedContact) return;
+      const targetContactId = selectedContact._id || selectedContact.id;
+      const textToSend = (drafts[targetContactId] || "").trim(); 
+      const mediaToSend = mediaPreview ? mediaPreview.url : null;
+      const typeToSend = mediaPreview ? mediaPreview.type : 'text';
+
+      if(!textToSend && !mediaToSend) return; 
+
+      setSending(true);
+      try {
+          const payload = {
+              contactId: targetContactId,
+              to: selectedContact.phoneNumber || selectedContact.phone_number,
+              text: textToSend, 
+              type: typeToSend,
+              mediaUrl: mediaToSend,
+              replyToMessageId: replyingTo ? replyingTo.whatsapp_message_id : null,
+              replyContext: replyingTo ? (replyingTo.text || replyingTo.content || 'Media/Attachment') : null,
+              agentName: userRole === 'agent' ? userName : 'Admin' 
+          };
+
+          const res = await fetch(`${API_BASE_URL}/api/crm/messages/send`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', token: `Bearer ${token}` },
+              body: JSON.stringify(payload)
+          });
+          
+          if(res.ok) {
+              const sentMsg = await res.json();
+              setDrafts(prev => ({ ...prev, [targetContactId]: "" }));
+              if (activeContactRef.current && (activeContactRef.current._id || activeContactRef.current.id) === targetContactId) {
+                  setMessages(prev => [...prev, sentMsg]);
+                  setMediaPreview(null); setReplyingTo(null); 
+              }
+          }
+      } catch(err) { console.error(err); } finally { setSending(false); }
   };
 
-  if (!activeLead) {
-    return (
-      <div className={`border border-slate-600/30 rounded-3xl p-4 h-full flex flex-col items-center justify-center shadow-xl ${theme === 'light' ? 'bg-white text-gray-400' : 'bg-slate-800 text-gray-400'}`}>
-        <p>Select a chat from the left to start messaging</p>
-      </div>
-    );
-  }
+  const filteredContacts = useMemo(() => {
+    return contacts
+      .filter(c => {
+        if (selectedBiz && selectedBiz.id && c.owner_id) {
+            if (String(c.owner_id) !== String(selectedBiz.id) && String(c.ownerId) !== String(selectedBiz.id)) return false;
+        }
+
+        const p = String(c.phase || c.status).toUpperCase();
+        const isFreePhase = p === '1' || p === 'FREE' || p === 'FREE_SEMINAR';
+
+        if (activePhase === 'FREE') {
+            if (!isFreePhase) return false;
+            if (selectedBatchFilter !== 'All' && c.batch_id) {
+                if (String(c.batch_id || c.batchId) !== String(selectedBatchFilter)) return false; 
+            }
+        } else if (activePhase === 'AFTER') {
+            if (isFreePhase) return false; 
+        }
+
+        const contactPhone = c.phoneNumber || c.phone_number || "";
+        if (searchTerm && !contactPhone.includes(searchTerm)) return false;
+        
+        const assignedId = c.assignedTo || c.assigned_to;
+        const isAssigned = !!assignedId && assignedId !== 'null';
+
+        if (activeTab === 'New Chat') {
+            if (isAssigned) return false;
+        } else if (activeTab === 'Assigned') {
+            if (!isAssigned) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+          const aUnread = (a.unreadCount || a.unread_count) > 0 ? 1 : 0;
+          const bUnread = (b.unreadCount || b.unread_count) > 0 ? 1 : 0;
+          if (aUnread !== bUnread) return bUnread - aUnread; 
+          return new Date(b.lastMessageTime || b.last_message_time || 0) - new Date(a.lastMessageTime || a.last_message_time || 0);
+      });
+  }, [contacts, searchTerm, activeTab, activePhase, selectedBiz, selectedBatchFilter]);
+
+  // Dummy functions to prevent crashes from ChatArea props
+  const fetchQuickReplies = () => {};
+  const handleSelectAutoSuggest = (t) => { setNewMessage(t.message); setShowTemplates(false); };
+  const fetchApprovedTemplates = () => {};
+  const handleSelectTemplate = (t) => { setNewMessage(t.message); setShowTemplates(false); };
+  const handleTemplateMediaUpload = (e) => {};
+  const handleCreateQuickReply = () => {};
+  const handleDeleteQuickReply = (id) => {};
+  const handleTyping = (e) => { setNewMessage(e.target.value); };
+  const handleFileUpload = (e) => {};
+  const startRecording = () => {};
+  const stopRecording = () => {};
+  const cancelRecording = () => {};
+  const formatTime = (time) => "00:00";
+
+  // 🔥 සේරම අලුත් Props ටික මෙතනින් යවනවා 🔥
+  const stateProps = {
+    contacts, agents, messages, selectedContact, setSelectedContact,
+    isDarkMode, fontIndex, theme, setTheme, currentTheme,
+    activeTab, setActiveTab, searchTerm, setSearchTerm, 
+    showLeadDetails, setShowLeadDetails,
+    newMessage, setNewMessage, sending, mediaPreview, setMediaPreview, uploading, 
+    replyingTo, setReplyingTo, handleSendMessage, filteredContacts, userRole, userId,
+    showTemplates, setShowTemplates, suggestedReplies, templates, 
+    isCreatingTemplate, setIsCreatingTemplate, newTemplateTitle, setNewTemplateTitle, 
+    newTemplateMsg, setNewTemplateMsg, uploadingTemplateMedia, templateMediaPreview, setTemplateMediaPreview,
+    isRecording, recordingTime, fetchQuickReplies, handleSelectAutoSuggest, fetchApprovedTemplates,
+    handleSelectTemplate, handleTemplateMediaUpload, handleCreateQuickReply, handleDeleteQuickReply,
+    handleTyping, handleFileUpload, startRecording, stopRecording, cancelRecording, formatTime, scrollRef
+  };
 
   return (
-    <div className={`border ${theme === 'light' ? 'border-gray-300' : 'border-slate-600'} rounded-3xl h-full flex flex-col shadow-2xl overflow-hidden relative ${currentTheme.bg}`}>
-      
-      <div className={`${currentTheme.header} p-4 border-b flex justify-between items-center z-10 transition-colors`}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-500 flex items-center justify-center text-white font-bold text-lg">
-            {activeLead.customer_name ? activeLead.customer_name.charAt(0) : '#'}
-          </div>
-          <div>
-            <h3 className={`${currentTheme.text} font-bold text-md`}>{activeLead.customer_name || activeLead.phone_number}</h3>
-            <p className={`${currentTheme.subText} text-xs`}>{activeLead.phone_number}</p>
-          </div>
-        </div>
-        <div className="flex gap-2 bg-black/10 p-1 rounded-lg border border-black/5">
-          <button onClick={() => setTheme('light')} className={`w-5 h-5 rounded-full bg-[#efeae2] border border-gray-400 ${theme === 'light' ? 'ring-2 ring-blue-500' : ''}`}></button>
-          <button onClick={() => setTheme('whatsapp')} className={`w-5 h-5 rounded-full bg-[#005c4b] ${theme === 'whatsapp' ? 'ring-2 ring-white' : ''}`}></button>
-          <button onClick={() => setTheme('blue')} className={`w-5 h-5 rounded-full bg-blue-600 ${theme === 'blue' ? 'ring-2 ring-white' : ''}`}></button>
-        </div>
-      </div>
-
-      {currentTheme.patternUrl && <div className="absolute inset-0 z-0 opacity-[0.06] pointer-events-none" style={{ backgroundImage: `url(${currentTheme.patternUrl})`, backgroundSize: '400px' }}></div>}
-
-      <div className="flex-1 p-5 overflow-y-auto custom-scrollbar flex flex-col gap-4 z-10">
-        {loading && <div className="text-center text-gray-500 text-xs">Loading messages...</div>}
-        {messages.map((msg) => {
-          const isMe = msg.sender_type === 'Agent' || msg.sender_type === 'Bot';
-          const agentName = msg.agent ? msg.agent.first_name : 'System';
-
-          return (
-            <div key={msg.id} className={`flex flex-col max-w-[75%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}>
-              {isMe && (
-                <span className="text-[10px] font-bold mb-1 flex items-center gap-1">
-                  {msg.sender_type === 'Bot' ? (
-                    <span className="text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">Gemini Bot Reply</span>
-                  ) : (
-                    <span className="text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">Sent by: {agentName}</span>
-                  )}
-                </span>
-              )}
-
-              <div className={`p-3 rounded-2xl shadow-sm border border-black/5 ${isMe ? `${currentTheme.bubbleMe} rounded-tr-none` : `${currentTheme.bubbleThem} rounded-tl-none`}`}>
-                {msg.media_url && <img src={msg.media_url} alt="media" className="max-w-xs rounded-lg mb-2" />}
-                {msg.content && <p className="text-[14.5px] leading-relaxed">{msg.content}</p>}
-                <div className="text-[10px] mt-1.5 text-right opacity-70">
-                  {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} {isMe && '✓✓'}
-                </div>
+      <div className="flex flex-col w-full h-full gap-4">
+          {activePhase === 'FREE' && (
+              <div className="flex justify-end items-center px-2 shrink-0 animate-in fade-in">
+                  <div className="flex items-center gap-3 bg-slate-900/60 border border-blue-500/30 pl-4 pr-2 py-1.5 rounded-xl backdrop-blur-md shadow-lg z-40">
+                      <Layers size={16} className="text-blue-400" />
+                      <span className="text-sm font-bold text-slate-300 mr-2">Filter by Batch:</span>
+                      <select 
+                          value={selectedBatchFilter}
+                          onChange={(e) => setSelectedBatchFilter(e.target.value)}
+                          className="bg-blue-500/10 text-blue-300 font-bold outline-none border border-blue-500/20 rounded-lg px-3 py-1.5 cursor-pointer text-sm hover:bg-blue-500/20 transition-colors"
+                      >
+                          <option value="All">🌍 All Batches</option>
+                          {batches.map(b => (
+                              <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                      </select>
+                  </div>
               </div>
-            </div>
-          );
-        })}
+          )}
+          <div className={`flex w-full flex-1 rounded-3xl overflow-hidden shadow-2xl relative transition-all border bg-slate-900/40 border-white/10 backdrop-blur-md`}>
+            <ContactSidebar {...stateProps} />
+            <ChatArea {...stateProps} />
+            {showLeadDetails && <CampaignSidebar {...stateProps} />}
+          </div>
       </div>
-
-      <form onSubmit={handleSendMessage} className={`${currentTheme.header} p-3 border-t z-10 flex items-center gap-3 transition-colors`}>
-        <input 
-          type="text" placeholder="Type a message..." required
-          className={`flex-1 p-3 rounded-xl ${currentTheme.text} text-[15px] outline-none transition-all ${currentTheme.inputBg}`}
-          value={message} onChange={(e) => setMessage(e.target.value)}
-        />
-        <button type="submit" className="bg-[#00a884] text-white p-3 rounded-xl transition-all shadow-md flex items-center justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 rotate-90" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
-        </button>
-      </form>
-    </div>
   );
 }

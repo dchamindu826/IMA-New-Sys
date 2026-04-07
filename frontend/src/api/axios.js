@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://72.62.249.211:5000/api', // ඔයාගේ Node.js Backend URL එක
+  baseURL: 'https://imacampus.online/api', // ඔයාගේ Node.js Backend URL එක
 });
 
 // හැම Request එකක්ම යද්දි LocalStorage එකේ තියෙන Token එක අරන් යවන්න මේක උදව් වෙනවා

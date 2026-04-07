@@ -9,4 +9,8 @@ export default defineConfig({
     react()
   ],
   base: '/', // අනිවාර්යයෙන්ම මේ පේළිය එකතු කරන්න
+  server: {
+    host: true,
+    allowedHosts: ['imacampus.online', 'www.imacampus.online'] // 🔥 මේක තමයි අපි අලුතින් දාන්නේ 🔥
+  }
 })

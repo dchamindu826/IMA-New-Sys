@@ -234,9 +234,10 @@ const { sendPushNotification } = require('../services/firebaseService'); // උ�
 const createAdminPost = async (req, res) => {
     try {
         const { title, description, businessId, batchId } = req.body;
-        const imageName = req.file ? req.file.filename : null; 
+        
+        // 🔥 FIX 1: ෆොටෝ එකක් නැත්නම් 'default.png' හරි හිස් එකක් හරි යවනවා (DB එකේ null තියන්න බැරි නිසා) 🔥
+        const imageName = req.file ? req.file.filename : 'default.png'; 
 
-        // All කියලා ආවොත් null කරගන්නවා DB එකට දාන්න ලේසි වෙන්න
         const bId = (businessId && businessId !== 'all' && businessId !== 'null') ? BigInt(businessId) : null;
         const btId = (batchId && batchId !== 'all' && batchId !== 'null') ? BigInt(batchId) : null;
 
@@ -244,7 +245,7 @@ const createAdminPost = async (req, res) => {
         const newPost = await prisma.posts.create({
             data: {
                 title: title,
-                description: description,
+                caption: description, // 🔥 FIX 2: description වෙනුවට 'caption' කියලා යැව්වා (Database එකේ තියෙන්නේ එහෙමයි) 🔥
                 image: imageName,
                 business_id: bId,
                 batch_id: btId,
@@ -253,22 +254,27 @@ const createAdminPost = async (req, res) => {
         });
 
         // 2. කාටද යවන්නේ කියලා තීරණය කිරීම (Topic Routing)
-        let targetTopic = 'all_users'; // Default යන්නේ සේරටම (Enroll වෙලා නැති අයටත් මේක යනවා)
-        
+        let targetTopic = 'all_users'; 
         if (btId) {
-            targetTopic = `batch_${btId}`; // Batch එකක් තෝරලා නම් ඒ Batch එකේ අයට විතරයි
+            targetTopic = `batch_${btId}`; 
         } else if (bId) {
-            targetTopic = `business_${bId}`; // Business එකක් විතරක් තෝරලා නම් ඒ Business එකේ අයට විතරයි
+            targetTopic = `business_${bId}`; 
         }
 
-        // 3. Notification එක යැවීම
-        const imageUrl = imageName ? `http://72.62.249.211:5000/storage/posts/${imageName}` : null;
-        await sendPushNotification(title, description, imageUrl, targetTopic);
+        // 3. Notification එක යැවීම (Error ආවත් Post එක සේව් වෙන්න Try-Catch එක)
+        const imageUrl = imageName !== 'default.png' ? `http://72.62.249.211:5000/storage/posts/${imageName}` : null;
+        
+        try {
+            await sendPushNotification(title, description, imageUrl, targetTopic);
+        } catch (pushErr) {
+            console.log("Push Notification Failed, but Post was saved:", pushErr.message);
+        }
 
         const safeJson = (data) => JSON.parse(JSON.stringify(data, (k, v) => typeof v === 'bigint' ? v.toString() : v));
-        return res.status(201).json({ message: "Post created & Notification sent successfully!", data: safeJson(newPost) });
+        return res.status(201).json({ message: "Post created successfully!", data: safeJson(newPost) });
 
     } catch (error) {
+        console.error("Post Create Error:", error);
         return res.status(500).json({ error: error.message });
     }
 };

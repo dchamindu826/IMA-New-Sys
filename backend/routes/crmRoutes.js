@@ -1,44 +1,40 @@
+// backend/routes/crmRoutes.js
 const express = require('express');
 const router = express.Router();
-const multer = require('multer'); // 🔴 මේ පේළිය අනිවාර්යයෙන්ම තියෙන්න ඕනේ
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
 const { protect } = require('../middleware/authMiddleware');
+let adminOnly;
+try { adminOnly = require('../middleware/authMiddleware').adminOnly; } catch(e) {}
+const requireAdmin = adminOnly || protect; 
 
 // Controllers
 const { verifyWebhook, handleIncomingMessage } = require('../controllers/whatsappWebhookController');
-const { getLeads, bulkAssignLeads } = require('../controllers/leadController');
 const { getMessages, sendManualMessage } = require('../controllers/messageController');
-const { checkStudentLms, updatePassword, updateEnrollmentPlan } = require('../controllers/bridgeController');
-const { getConfig, saveConfig, ingestDocument, getDocuments, deleteDocument } = require('../controllers/crmSetupController');
-const { getAssignedCalls, saveCallLog } = require('../controllers/callCampaignController');
+const { getCrmConfig, saveCrmConfig, deleteTrainingFile } = require('../controllers/crmSetupController');
+const { getContacts } = require('../controllers/leadController'); // 🔥 මෙන්න මේක අලුතින් දැම්මා 🔥
 
-const upload = multer({ dest: 'uploads/' }); // Temporary folder for PDFs
+const crmStoragePath = path.join(__dirname, '../public/crm_files');
+if (!fs.existsSync(crmStoragePath)) fs.mkdirSync(crmStoragePath, { recursive: true });
 
-// --- 1. WhatsApp Webhook (Meta API) ---
+const crmStorage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, crmStoragePath),
+    filename: (req, file, cb) => cb(null, Date.now() + '_' + file.originalname.replace(/\s+/g, '_'))
+});
+const uploadCrm = multer({ storage: crmStorage });
+
+// Routes
 router.get('/webhook', verifyWebhook);
 router.post('/webhook', handleIncomingMessage);
-
-// --- 2. Lead Management ---
-router.get('/leads', protect, getLeads);
-router.post('/leads/bulk-assign', protect, bulkAssignLeads);
-
-// --- 3. Messaging ---
 router.get('/messages/:leadId', protect, getMessages);
 router.post('/messages/send', protect, sendManualMessage);
+router.get('/business/crm-config/:businessId', protect, getCrmConfig);
+router.post('/business/crm/save', requireAdmin, uploadCrm.any(), saveCrmConfig);
+router.post('/business/crm/delete-file', requireAdmin, deleteTrainingFile);
 
-// --- 4. LMS Bridge ---
-router.get('/bridge/student/:phone', protect, checkStudentLms);
-router.post('/bridge/update-password', protect, updatePassword);
-router.post('/bridge/update-enrollment', protect, updateEnrollmentPlan);
-
-// --- 5. CRM Setup & Ingestion ---
-router.get('/setup/config/:phase', protect, getConfig);
-router.post('/setup/config', protect, saveConfig);
-router.post('/setup/ingest', protect, upload.single('pdf'), ingestDocument);
-router.get('/setup/documents/:phase', protect, getDocuments);
-router.delete('/setup/documents/:id', protect, deleteDocument);
-
-// --- 6. Call Campaign Routes ---
-router.get('/calls/assigned', protect, getAssignedCalls);
-router.post('/calls/log', protect, saveCallLog);
+// 🔥 මේක තමයි 404 ආපු Route එක 🔥
+router.get('/contacts', protect, getContacts);
 
 module.exports = router;

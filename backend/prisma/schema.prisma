@@ -817,6 +817,8 @@ model whatsapp_leads {
   phase              String   @default("FREE_SEMINAR") 
   status             String   @default("New") 
   assigned_to        BigInt?  
+  owner_id          Int?
+  batch_id          Int?
   last_message_time  DateTime?
   unread_count       Int      @default(0)
   
@@ -848,4 +850,36 @@ model api_keys {
   type       String   @db.VarChar(50)
   name       String?  @db.VarChar(100)
   api_key    String   @db.Text
+}
+
+// ==========================
+// 🚀 AI CRM SETTINGS (NEW) 🚀
+// ==========================
+
+model crm_configs {
+  id                    Int      @id @default(autoincrement())
+  business_id           BigInt
+  phase                 String   // "FREE_SEMINAR" or "AFTER_SEMINAR"
+  is_ai_active          Boolean  @default(false)
+  is_auto_reply_active  Boolean  @default(false)
+  batch_id              BigInt?
+  meta_phone_id         String?
+  meta_waba_id          String?
+  meta_token            String?  @db.Text
+  gemini_keys           String?  @db.Text // JSON Array e.g., ["key1", "key2"]
+  auto_replies          String?  @db.Text // JSON Array
+  handoff_limit         Int      @default(5)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+}
+
+model crm_training_files {
+  id            Int      @id @default(autoincrement())
+  business_id   BigInt
+  phase         String   // "FREE_SEMINAR" or "AFTER_SEMINAR"
+  file_name     String   // Uploaded file name in storage
+  original_name String   // Display name
+  size          String?
+  type          String?
+  created_at    DateTime @default(now())
 }
