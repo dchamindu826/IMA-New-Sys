@@ -46,9 +46,15 @@ app.use('/api/course-setup', courseSetupRoutes);
 app.use('/api/admin/manager', contentHubRoutes);
 app.use('/api/templates', templateRoutes);
 
+// 🔥 LMS / Right Panel Routes (ඔයා අලුතින් හදපු එක) 🔥
+app.use('/api/bridge', require('./routes/bridgeRoutes'));
+
 // --- CRM & TEAM ROUTES ---
 app.use('/api/crm', crmRoutes); 
 app.use('/api/team', teamRoutes); 
+
+// 🔥 Mobile App එකට අදාල සම්පූර්ණ Routes මෙතනින් යන්නේ 🔥
+app.use('/api/mobile', require('./routes/mobile/mobileRoutes'));
 
 // 🚀 අලුත් Webhook Routes දෙක මෙතනින් දාන්න 🚀
 // Meta එකෙන් Verify කරගන්න (GET)
@@ -62,8 +68,14 @@ try { app.use('/api/broadcast', require('./routes/broadcast')); } catch(e) {}
 try { app.use('/api/templates', require('./routes/templates')); } catch(e) {} 
 try { app.use('/api/quick-replies', require('./routes/quick_replies')); } catch(e) {} 
 
+const startTaskCron = require('./cron/taskCron');
+
 const PORT = process.env.PORT || 5000;
+
+// 🔥 2. Server එක Start වෙද්දීම Cron එකත් Start කරන්න 🔥
+startTaskCron();
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    console.log("⏱️  Cron Jobs are initialized and running..."); // මේකත් දාන්න, එතකොට Terminal එකේ පෙනෙයි
 });

@@ -73,7 +73,8 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
             <NavLink to="/manager/tasks" className={getNavLinkClass}><ListTodo size={18} /> Workflow & Tasks</NavLink>
             <NavLink to="/admin/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Content Hub</NavLink>
             <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> WhatsApp CRM</NavLink>
-
+            <NavLink to="/admin/coordinator-tasks" className={getNavLinkClass}><ListTodo size={18} /> Staff Tasks View</NavLink>
+            
             <div className="text-[10px] uppercase font-black text-slate-500 mt-3 mb-1 pl-2 tracking-widest">Finance Dept</div>
             <NavLink to="/admin/payments" className={getNavLinkClass}><Banknote size={18} /> Payment Hub</NavLink>
           </>

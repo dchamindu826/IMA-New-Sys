@@ -60,14 +60,22 @@ function App() {
   };
 
   const getDefaultDashboard = (role) => {
-      if(role === 'System Admin' || role === 'superadmin' || role === 'Director') return "/admin/dashboard";
+      // role එකක් නැත්නම් හෝ වැරදි නම් loop නොවී Home එකට යවනවා
+      if (!role) return "/"; 
+      
+      // Admin කියන role එකත් මෙතනට මම එකතු කළා ආරක්ෂාවට
+      if(role === 'System Admin' || role === 'superadmin' || role === 'Director' || role === 'Admin') return "/admin/dashboard";
       if(role === 'Manager' || role === 'Ass Manager') return "/manager/dashboard";
       if(role === 'Coordinator' || role === 'Staff') return "/coordinator/dashboard";
-      if(role === 'Finance') return "/admin/finance";
+      
+      // 🔥 FIX: Finance අයගේ route එක /admin/payments වෙන්න ඕනේ 🔥
+      if(role === 'Finance') return "/admin/payments"; 
+      
       if(role === 'user' || role === 'student') return "/student/dashboard"; 
-      return "/login";
+      
+      // මැච් වෙන කිසිම role එකක් නැත්නම් /login වලට යවලා loop වෙනවා වෙනුවට Home (/) එකට යවනවා
+      return "/"; 
   };
-
   if (loading) return <div className="min-h-screen bg-[#0A0F1C] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
 
   return (
@@ -91,6 +99,7 @@ function App() {
           <Route path="admin/staff" element={<StaffManager />} />
           <Route path="admin/batches/:businessId" element={<BatchManager />} />
           <Route path="admin/content-hub" element={<ContentHub />} />
+          <Route path="admin/coordinator-tasks" element={<CoordinatorTasks />} />
           
           {/* 🔥 FIX: AdminCrmSetup එක Sidebar එකේ ලින්ක් එකට මැච් වෙන්න දැම්මා 🔥 */}
           <Route path="admin/crm-setup" element={<AdminCrmSetup />} />

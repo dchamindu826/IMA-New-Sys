@@ -1,115 +1,99 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
 
-// ==========================================
-// පරණ Functions (Leads)
-// ==========================================
-const getLeads = async (req, res) => {
+// 1. GET ALL CONTACTS
+const getContacts = async (req, res) => {
     try {
-        const { user_id, role } = req.query;
-        let whereClause = {};
-
-        // Staff නම් එයාලට Assign වෙච්ච ඒවා විතරයි පේන්නේ
-        if (role === 'Staff' || role === 'Coordinator') {
-            whereClause = { assigned_to: BigInt(user_id) };
-        }
-
         const leads = await prisma.whatsapp_leads.findMany({
-            where: whereClause,
             orderBy: { last_message_time: 'desc' }
         });
 
-        // BigInt serialize කිරීම (Json වලට හරවන්න)
-        const serializedLeads = JSON.parse(JSON.stringify(leads, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        ));
+        // Frontend එක බලාපොරොත්තු වෙන විදිහට Map කරනවා
+        const formatted = leads.map(c => ({
+            ...c,
+            _id: c.id,
+            phoneNumber: c.phone_number,
+            name: c.customer_name,
+            ownerId: c.owner_id,
+            assignedTo: c.assigned_to ? Number(c.assigned_to) : null,
+            callStatus: c.status,
+            lastMessageTime: c.last_message_time,
+            unreadCount: c.unread_count
+        }));
 
-        return res.status(200).json(serializedLeads);
-    } catch (error) {
-        return res.status(500).json({ message: "Server Error" });
+        res.status(200).json(safeJson(formatted));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 };
 
-const bulkAssignLeads = async (req, res) => {
+// 2. ASSIGN SELECTED CHATS (තෝරලා Assign කිරීම)
+const assignChats = async (req, res) => {
     try {
-        const { assignType, count, agentId } = req.body;
+        const { contactIds, agentId } = req.body;
+        await prisma.whatsapp_leads.updateMany({
+            where: { id: { in: contactIds.map(id => parseInt(id)) } },
+            data: { assigned_to: parseInt(agentId), status: 'PHASE_1' }
+        });
+        res.status(200).json({ message: "Contacts assigned successfully!" });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
 
+// 3. BULK ASSIGN (Manager Action - ප්‍රමාණයක් දීලා Assign කිරීම)
+const assignLeadsManual = async (req, res) => {
+    try {
+        const { batch_id, staff_id, qty, order } = req.body; 
+        
+        // Assign නොකරපු Leads ගන්නවා
         const unassignedLeads = await prisma.whatsapp_leads.findMany({
-            where: { status: "New", assigned_to: null },
-            orderBy: { created_at: assignType === 'first' ? 'asc' : 'desc' },
-            take: parseInt(count)
+            where: {
+                batch_id: parseInt(batch_id),
+                assigned_to: null,
+                status: 'New'
+            },
+            orderBy: { created_at: order === 'last' ? 'desc' : 'asc' },
+            take: parseInt(qty)
         });
 
         if (unassignedLeads.length === 0) {
-            return res.status(400).json({ message: "No unassigned leads found." });
+            return res.status(404).json({ message: "No unassigned leads found for this batch." });
         }
 
-        const leadIds = unassignedLeads.map(l => l.id);
+        const leadIds = unassignedLeads.map(lead => lead.id);
 
+        // ඒ ටික Staff ට Assign කරනවා
         await prisma.whatsapp_leads.updateMany({
             where: { id: { in: leadIds } },
-            data: { assigned_to: BigInt(agentId), status: "Assigned" }
+            data: { 
+                assigned_to: parseInt(staff_id),
+                status: 'PHASE_1' 
+            }
         });
 
-        return res.status(200).json({ message: "Assigned Successfully" });
+        res.status(200).json({ 
+            message: `Successfully assigned ${leadIds.length} leads.`,
+            assigned_count: leadIds.length 
+        });
     } catch (error) {
-        return res.status(500).json({ message: "Server Error" });
+        res.status(500).json({ message: error.message });
     }
 };
 
-// ==========================================
-// 🔥 අලුත් Functions (CRM Contacts / Inbox) 🔥
-// ==========================================
-
-const getContacts = async (req, res) => {
+// 4. RESET ASSIGNMENTS
+const resetAssignments = async (req, res) => {
     try {
-        let whereClause = {};
-        
-        // 🔴 FIX: Database එකේ තියෙන්නේ 'whatsapp_leads' නේද? 
-        // ඒ නිසා අපි 'prisma.whatsapp_leads' පාවිච්චි කරනවා.
-        const contacts = await prisma.whatsapp_leads.findMany({
-            where: whereClause,
-            orderBy: { last_message_time: 'desc' }
-        });
-
-        // BigInt අවුල හදන්න Json.parse දානවා
-        const serializedContacts = JSON.parse(JSON.stringify(contacts, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        ));
-
-        return res.status(200).json(serializedContacts);
-    } catch (error) {
-        console.error("Error fetching contacts:", error);
-        return res.status(500).json({ message: "Failed to fetch contacts" });
-    }
-};
-
-const markAllRead = async (req, res) => {
-    try {
-        let whereClause = {};
-        
+        const { batch_id } = req.body;
         await prisma.whatsapp_leads.updateMany({
-            where: whereClause,
-            data: { unread_count: 0 }
+            where: { batch_id: parseInt(batch_id) },
+            data: { assigned_to: null, status: 'New' }
         });
-
-        return res.status(200).json({ message: "Marked all as read" });
-    } catch (error) {
-        console.error("Error marking as read:", error);
-        return res.status(500).json({ message: "Server Error" });
+        res.status(200).json({ message: "All contacts unassigned successfully!" });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 };
 
-const addContact = async (req, res) => { return res.status(200).json({ message: "Contact Added" }); };
-const bulkAddContacts = async (req, res) => { return res.status(200).json({ message: "Bulk Contacts Added" }); };
-const updateContact = async (req, res) => { return res.status(200).json({ message: "Contact Updated" }); };
-
-module.exports = { 
-    getLeads, 
-    bulkAssignLeads, 
-    getContacts, 
-    markAllRead,
-    addContact,
-    bulkAddContacts,
-    updateContact
-};
+module.exports = { getContacts, assignChats, assignLeadsManual, resetAssignments };

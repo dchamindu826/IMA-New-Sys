@@ -1,3 +1,5 @@
+// backend/controllers/bridgeController.js
+
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
@@ -6,11 +8,18 @@ const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeo
 
 const checkStudentLms = async (req, res) => {
     try {
-        const phone = req.params.phone;
-        // නම්බර් එකෙන් ළමයව හොයනවා
+        let phone = req.params.phone;
+
+        // 🔥 FIX: ෆෝන් නම්බර් එකේ තියෙන ඔක්කොම අකුරු/ලකුණු (Spaces, + , -) අයින් කරනවා 🔥
+        let cleanPhone = phone.replace(/\D/g, ''); 
+
+        // 🔥 FIX: අග තියෙන ඉලක්කම් 9 විතරක් ගන්නවා. (උදා: 714941559) 🔥
+        const last9Digits = cleanPhone.slice(-9);
+
+        // නම්බර් එකෙන් ළමයව හොයනවා. (පොඩිම කෑල්ලෙන් හොයන නිසා කොහොම ලියලා තිබ්බත් අහුවෙනවා!)
         const student = await prisma.users.findFirst({
             where: { 
-                OR: [{ phone: phone }, { phone: '0' + phone.substring(2) }], 
+                phone: { endsWith: last9Digits }, // EndsWith එකෙන් හොයනවා
                 role: 'user' 
             }
         });
@@ -65,7 +74,6 @@ const updatePassword = async (req, res) => {
 
 const updateEnrollmentPlan = async (req, res) => {
     try {
-        // මෙතනට ඔයාගේ Payment Plan මාරු කරන ලොජික් එක එනවා
         res.status(200).json({ success: true, message: "Plan updated successfully!" });
     } catch (error) { 
         res.status(500).json({ error: error.message }); 

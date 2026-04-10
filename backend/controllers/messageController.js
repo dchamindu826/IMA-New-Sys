@@ -2,82 +2,112 @@ const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// 1. Get Chat History for a Contact
+const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+
 const getMessages = async (req, res) => {
     try {
-        const { leadId } = req.params;
-        
-        // Unread count එක 0 කරනවා (Agent චැට් එක ඕපන් කරපු නිසා)
-        await prisma.contacts.update({
-            where: { id: Number(leadId) },
-            data: { unread_count: 0 }
-        });
+        const leadId = req.params.leadId;
+        const lead = await prisma.whatsapp_leads.findUnique({ where: { id: parseInt(leadId) } });
+        if (!lead) return res.status(404).json({ message: "Contact not found" });
 
-        const messages = await prisma.messages.findMany({
-            where: { contact_id: Number(leadId) },
+        const messages = await prisma.chat_logs.findMany({
+            where: { phone: lead.phone_number },
             orderBy: { created_at: 'asc' }
         });
 
-        res.status(200).json(messages);
+        return res.status(200).json(safeJson(messages));
     } catch (error) {
-        res.status(500).json({ error: "Failed to load messages" });
+        console.error("Error fetching messages:", error);
+        return res.status(500).json({ message: "Server Error" });
     }
 };
 
-// 2. Send Manual Message from Dashboard
+const markContactRead = async (req, res) => {
+    try {
+        const leadId = req.params.id;
+        await prisma.whatsapp_leads.update({
+            where: { id: parseInt(leadId) },
+            data: { unread_count: 0 }
+        });
+        return res.status(200).json({ success: true });
+    } catch (error) {
+        return res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// 🔥 WhatsApp එකට ඇත්තටම මැසේජ් එක යවන Function එක 🔥
 const sendManualMessage = async (req, res) => {
     try {
-        const { contactId, to, text, type, mediaUrl, agentName } = req.body;
-        const ownerId = req.user.businessId; // Middleware එකෙන් එන Business ID එක
+        const { contactId, to, text, type, mediaUrl, agentName, replyToMessageId } = req.body;
+        
+        // 1. Lead එක සහ CRM Config ගන්නවා
+        const lead = await prisma.whatsapp_leads.findUnique({ where: { id: parseInt(contactId) } });
+        if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-        // Config එක ගන්නවා Token එක හොයාගන්න
-        const config = await prisma.crm_configs.findFirst({
-            where: { business_id: BigInt(ownerId) }
+        const crmConfig = await prisma.crm_configs.findFirst({
+            where: { business_id: lead.owner_id }
         });
 
-        if (!config || !config.meta_token) {
-            return res.status(400).json({ message: "Meta API is not configured." });
+        if (!crmConfig || !crmConfig.meta_token) {
+            return res.status(400).json({ message: "Meta API config missing" });
         }
 
-        const payload = {
+        // 2. Meta එකට යවන Payload එක හදනවා
+        let metaPayload = {
             messaging_product: "whatsapp",
             recipient_type: "individual",
             to: to,
         };
 
-        if (type === 'image' && mediaUrl) {
-            payload.type = "image";
-            payload.image = { link: mediaUrl, caption: text };
-        } else {
-            payload.type = "text";
-            payload.text = { body: text };
+        // 🔥 Reply එකක් නම් (Frontend එකෙන් replyToMessageId එවුවොත් ඒක context එකට දානවා) 🔥
+        if (replyToMessageId) {
+            metaPayload.context = { message_id: replyToMessageId };
         }
 
-        // Meta API එකට යවනවා
-        const waRes = await axios.post(`https://graph.facebook.com/v18.0/${config.meta_phone_id}/messages`, payload, {
-            headers: { Authorization: `Bearer ${config.meta_token}` }
-        });
+        // Media Types වෙන් කරනවා
+        if (type === 'image' && mediaUrl) {
+            metaPayload.type = "image";
+            metaPayload.image = { link: mediaUrl, caption: text || "" };
+        } else if (type === 'video' && mediaUrl) {
+            metaPayload.type = "video";
+            metaPayload.video = { link: mediaUrl, caption: text || "" };
+        } else if (type === 'audio' && mediaUrl) {
+            metaPayload.type = "audio";
+            metaPayload.audio = { link: mediaUrl };
+        } else if (type === 'document' && mediaUrl) {
+            metaPayload.type = "document";
+            metaPayload.document = { link: mediaUrl, caption: text || "", filename: "Document" };
+        } else {
+            metaPayload.type = "text";
+            metaPayload.text = { body: text || mediaUrl };
+        }
 
-        // Database එකේ සේව් කරනවා
-        const newMsg = await prisma.messages.create({
+        // 3. Meta API එකට යවනවා
+        const response = await axios.post(
+            `https://graph.facebook.com/v18.0/${crmConfig.meta_phone_id}/messages`,
+            metaPayload,
+            { headers: { Authorization: `Bearer ${crmConfig.meta_token}` } }
+        );
+
+        // 🔥 WhatsApp එකෙන් එන අලුත් ID එක සේව් කරනවා 🔥
+        const waMsgId = response.data.messages?.[0]?.id;
+
+        // 4. DB එකේ Save කරනවා
+        const newMsg = await prisma.chat_logs.create({
             data: {
-                contact_id: Number(contactId),
-                owner_id: Number(ownerId),
-                text: text,
-                sender: "me",
-                direction: "outbound",
-                type: type,
-                media_url: mediaUrl,
-                whatsapp_message_id: waRes.data.messages?.[0]?.id,
-                agent_name: agentName
+                phone: to,
+                sender_type: "STAFF",
+                message: text || mediaUrl,
+                is_read: true,
+                wa_msg_id: waMsgId // 🔥 යවපු මැසේජ් එකේ ID එක DB එකට දානවා 🔥
             }
         });
-
-        res.status(200).json(newMsg);
+        
+        return res.status(200).json(safeJson(newMsg));
     } catch (error) {
-        console.error("❌ Send Msg Error:", error.response?.data || error.message);
-        res.status(500).json({ message: "Failed to send message to Meta" });
+        console.error("Meta Send Error:", error.response?.data || error.message);
+        return res.status(500).json({ message: "Failed to send message to WhatsApp" });
     }
 };
 
-module.exports = { getMessages, sendManualMessage };
+module.exports = { getMessages, markContactRead, sendManualMessage };

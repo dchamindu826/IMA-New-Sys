@@ -279,6 +279,58 @@ const createAdminPost = async (req, res) => {
     }
 };
 
+// ==========================================
+// GET BATCHES FULL (With Access Control)
+// ==========================================
+const getBatchesFull = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        let batches = [];
+
+        // 1. Admin කෙනෙක් නම් මුළු System එකේම තියෙන ඒවා ගන්නවා
+        if (['System Admin', 'superadmin', 'Director', 'Admin'].includes(userRole)) {
+            batches = await prisma.batches.findMany({
+                where: { status: 1 },
+                include: {
+                    business: true, // Business එකේ නම සහ විස්තර
+                    groups: { include: { courses: true } } // ඒ batch එකේ subjects
+                }
+            });
+        } 
+        // 2. Manager කෙනෙක් නම් එයාට අදාල Business එකේ ඒවා විතරයි
+        else if (['Manager', 'Ass Manager'].includes(userRole)) {
+            batches = await prisma.batches.findMany({
+                where: {
+                    business: {
+                        OR: [
+                            { head_manager_id: parseInt(userId) },
+                            { ass_manager_id: parseInt(userId) }
+                        ]
+                    },
+                    status: 1
+                },
+                include: {
+                    business: true,
+                    groups: { include: { courses: true } }
+                }
+            });
+        }
+
+        // JSON එකට හරවලා යවනවා (BigInt ප්‍රශ්න එන්නේ නැති වෙන්න)
+        const safeData = JSON.parse(JSON.stringify(batches, (key, value) =>
+            typeof value === 'bigint' ? value.toString() : value
+        ));
+
+        return res.status(200).json(safeData);
+    } catch (error) {
+        console.error("Batches Fetch Error:", error);
+        return res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// අන්තිමට module.exports එකට getBatchesFull එකතු කරන්න අමතක කරන්න එපා:
 module.exports = {
-    addContentGroup, addContentMassAssign, createGroup, updateGroup, updateContentMassAssign, createAdminPost
+    addContentGroup, addContentMassAssign, createGroup, updateGroup, updateContentMassAssign, createAdminPost, getBatchesFull
 };

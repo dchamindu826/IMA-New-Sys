@@ -1,4 +1,3 @@
-// backend/routes/crmRoutes.js
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -12,9 +11,11 @@ const requireAdmin = adminOnly || protect;
 
 // Controllers
 const { verifyWebhook, handleIncomingMessage } = require('../controllers/whatsappWebhookController');
-const { getMessages, sendManualMessage } = require('../controllers/messageController');
-const { getCrmConfig, saveCrmConfig, deleteTrainingFile } = require('../controllers/crmSetupController');
-const { getContacts } = require('../controllers/leadController'); // 🔥 මෙන්න මේක අලුතින් දැම්මා 🔥
+const { getMessages, sendManualMessage, markContactRead } = require('../controllers/messageController'); 
+const { getCrmConfig, saveCrmConfig, deleteTrainingFile, viewIngestedContent } = require('../controllers/crmSetupController');
+
+// 🔥 අලුත් Lead Controller එක 🔥
+const { getContacts, assignChats, assignLeadsManual, resetAssignments } = require('../controllers/leadController'); 
 
 const crmStoragePath = path.join(__dirname, '../public/crm_files');
 if (!fs.existsSync(crmStoragePath)) fs.mkdirSync(crmStoragePath, { recursive: true });
@@ -25,16 +26,25 @@ const crmStorage = multer.diskStorage({
 });
 const uploadCrm = multer({ storage: crmStorage });
 
-// Routes
+// WhatsApp Webhook Routes
 router.get('/webhook', verifyWebhook);
 router.post('/webhook', handleIncomingMessage);
+
+// Message & Contact Routes
 router.get('/messages/:leadId', protect, getMessages);
 router.post('/messages/send', protect, sendManualMessage);
+router.put('/contacts/:id/read', protect, markContactRead); 
+router.get('/contacts', protect, getContacts);
+
+// 🔥 Assignment Routes 🔥
+router.put('/assign-chats', requireAdmin, assignChats);
+router.post('/leads/bulk-assign', requireAdmin, assignLeadsManual);
+router.put('/reset-assignments', requireAdmin, resetAssignments);
+
+// Config Routes
 router.get('/business/crm-config/:businessId', protect, getCrmConfig);
 router.post('/business/crm/save', requireAdmin, uploadCrm.any(), saveCrmConfig);
 router.post('/business/crm/delete-file', requireAdmin, deleteTrainingFile);
-
-// 🔥 මේක තමයි 404 ආපු Route එක 🔥
-router.get('/contacts', protect, getContacts);
+router.post('/business/crm/view-file', requireAdmin, viewIngestedContent);
 
 module.exports = router;

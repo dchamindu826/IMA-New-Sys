@@ -688,12 +688,13 @@ model quick_replies {
 }
 
 model chat_logs {
-  id           Int      @id @default(autoincrement())
-  phone        String   // Student/Lead phone number
-  sender_type  String   // "USER", "AI_BOT", "STAFF"
-  message      String   @db.Text
-  is_read      Boolean  @default(false)
-  created_at   DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  phone       String   
+  sender_type String   
+  message     String   @db.Text
+  is_read     Boolean  @default(false)
+  wa_msg_id   String?  @db.VarChar(255) // 🔥 මේ පේළිය අනිවාර්යයෙන්ම දාන්න 🔥
+  created_at  DateTime @default(now())
 }
 
 // --- 4. DAILY TASKS (අලුත් Workflow එක) ---

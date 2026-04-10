@@ -42,18 +42,20 @@ const createUser = async (req, res) => {
 // --- 2. Login User ---
 const loginUser = async (req, res) => {
     try {
-        const { username, password } = req.body;
+        // 🔥 App එකෙන් 'phone' ලෙසත් වෙබ් එකෙන් 'username' ලෙසත් දත්ත එන්න පුළුවන් නිසා දෙකම check කරනවා 🔥
+        const { username, phone, password } = req.body;
+        const loginCredential = username || phone;
 
-        if (!username || !password) {
-            return res.status(401).json({ message: 'Validation error: Username and Password are required.' });
+        if (!loginCredential || !password) {
+            return res.status(401).json({ message: 'Validation error: Phone/NIC and Password are required.' });
         }
 
-        // is_numeric checks if it's a number, length < 11 checks if it's a phone number length
-        const isNumeric = /^\d+$/.test(username);
-        const field = (isNumeric && username.length < 11) ? 'phone' : 'nic';
+        // Phone එකක්ද NIC එකක්ද කියලා තීරණය කරනවා
+        const isNumeric = /^\d+$/.test(loginCredential);
+        const field = (isNumeric && loginCredential.length < 11) ? 'phone' : 'nic';
 
         const user = await prisma.users.findFirst({
-            where: { [field]: username }
+            where: { [field]: loginCredential }
         });
 
         if (!user) {
@@ -82,7 +84,7 @@ const loginUser = async (req, res) => {
             });
         }
 
-        // 🔥 FIX: Secret Key එක හැමතැනම සමාන කරා (campus_super_secret_key_2026) 🔥
+        // 🔥 Secret Key එක: campus_super_secret_key_2026
         const token = jwt.sign(
             { id: user.id.toString(), role: user.role, fName: user.fName, lName: user.lName }, 
             process.env.JWT_SECRET || 'campus_super_secret_key_2026', 
@@ -106,7 +108,6 @@ const logoutUser = async (req, res) => {
     try {
         const user = req.user; 
         
-        // 🔥 FIX: Code Duplication අයින් කළා 🔥
         if (user && user.role !== 'user') {
             await prisma.audit_trails.create({
                 data: {

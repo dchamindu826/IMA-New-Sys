@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, Loader2 } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+// 🔥 මෙතනින් ResponsiveContainer කියන එක අයින් කරා 🔥
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, Tooltip } from 'recharts';
 import api from '../../api/axios';
 
 export default function AdminDashboard() {
@@ -71,32 +72,35 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-slate-400/10 border border-slate-400/20 backdrop-blur-md p-6 rounded-2xl shadow-lg flex flex-col">
-          <h3 className="text-xs font-bold text-gray-300 tracking-wider mb-6">VERIFICATION STATUS</h3>
-          {/* 🔥 Fix: Recharts වලට height එකක් දුන්නා Warning එක නැති වෙන්න 🔥 */}
-          <div style={{ width: '100%', height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={stats?.pieData || []} innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" stroke="none">
-                  {(stats?.pieData || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.8)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '10px', backdropFilter: 'blur(10px)' }} itemStyle={{ color: '#fff' }} />
-              </PieChart>
-            </ResponsiveContainer>
+        
+        {/* PIE CHART SECTION */}
+        <div className="bg-slate-400/10 border border-slate-400/20 backdrop-blur-md p-6 rounded-2xl shadow-lg flex flex-col items-center overflow-hidden">
+          <h3 className="text-xs font-bold text-gray-300 tracking-wider mb-6 w-full text-left">VERIFICATION STATUS</h3>
+          
+          <div className="flex justify-center items-center w-full overflow-x-auto custom-scrollbar">
+            {/* 🔥 ResponsiveContainer අයින් කරලා Fixed Size දුන්නා 🔥 */}
+            <PieChart width={280} height={250}>
+              <Pie data={stats?.pieData || []} innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" stroke="none">
+                {(stats?.pieData || []).map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.8)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '10px', backdropFilter: 'blur(10px)' }} itemStyle={{ color: '#fff' }} />
+            </PieChart>
           </div>
         </div>
 
-        <div className="lg:col-span-2 bg-slate-400/10 border border-slate-400/20 backdrop-blur-md p-6 rounded-2xl shadow-lg flex flex-col">
+        {/* BAR CHART SECTION */}
+        <div className="lg:col-span-2 bg-slate-400/10 border border-slate-400/20 backdrop-blur-md p-6 rounded-2xl shadow-lg flex flex-col overflow-hidden">
           <h3 className="text-xs font-bold text-gray-300 tracking-wider mb-6">REVENUE BY COURSE</h3>
-          {/* 🔥 Fix: Recharts වලට height එකක් දුන්නා Warning එක නැති වෙන්න 🔥 */}
-          <div style={{ width: '100%', height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats?.barData || []} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+          
+          <div className="w-full overflow-x-auto custom-scrollbar pb-2">
+            <div className="min-w-[600px] flex justify-center">
+              {/* 🔥 ResponsiveContainer අයින් කරලා Fixed Size දුන්නා 🔥 */}
+              <BarChart width={600} height={250} data={stats?.barData || []} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                 <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
                 <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.8)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '10px', backdropFilter: 'blur(10px)' }} />
                 <Bar dataKey="revenue" fill="#60A5FA" radius={[4, 4, 0, 0]} barSize={40} />
               </BarChart>
-            </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>

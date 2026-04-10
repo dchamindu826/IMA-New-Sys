@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, Users, RefreshCw } from 'lucide-react';
 import { API_BASE_URL } from "../../config";
 import ContactSidebar from "./ContactSidebar";
 import ChatArea from "./ChatArea";
 import CampaignSidebar from "./RightPanel"; 
+import ChatModals from "./ChatModals"; 
+
+const getToken = () => localStorage.getItem('token') || localStorage.getItem('userToken') || localStorage.getItem('jwt');
 
 export default function UserInbox({ isEmbedded = false, initialSelectedContact = null, activePhase = 'FREE', selectedBiz = null }) {
   const [contacts, setContacts] = useState([]);
@@ -15,13 +18,22 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
   const [fontIndex, setFontIndex] = useState(1);
   const [theme, setTheme] = useState('blue'); 
   
-  const currentTheme = { bg: 'bg-slate-900/60 backdrop-blur-xl', bubbleMe: 'bg-blue-600 text-white border-none', bubbleThem: 'bg-slate-800 text-gray-200 border-white/10', header: 'bg-black/40 border-white/10', text: 'text-white', subText: 'text-gray-400', icon: 'text-gray-400 hover:text-white hover:bg-white/10', inputBg: 'bg-black/40 border border-white/10 text-white' };
+  const currentTheme = useMemo(() => {
+      if (theme === 'light') return { bg: 'bg-[#efeae2]', bubbleMe: 'bg-[#d9fdd3] text-gray-800 border border-gray-200 shadow-sm', bubbleThem: 'bg-white text-gray-800 border border-gray-200 shadow-sm', header: 'bg-[#f0f2f5] border-gray-300', text: 'text-gray-900', subText: 'text-gray-500', icon: 'text-gray-500 hover:text-gray-700 hover:bg-gray-200', inputBg: 'bg-white border border-gray-300 text-gray-800', patternUrl: null };
+      if (theme === 'whatsapp') return { bg: 'bg-[#0b141a]', bubbleMe: 'bg-[#005c4b] text-[#e9edef] border-none shadow-md', bubbleThem: 'bg-[#202c33] text-[#e9edef] border-none shadow-md', header: 'bg-[#202c33] border-[#2f3e46]', text: 'text-[#e9edef]', subText: 'text-[#8696a0]', icon: 'text-[#aebac1] hover:text-[#d1d7db] hover:bg-[#374045]', inputBg: 'bg-[#2a3942] border-none text-[#e9edef]', patternUrl: null };
+      return { bg: 'bg-slate-900/60 backdrop-blur-xl', bubbleMe: 'bg-blue-600 text-white border-none shadow-lg shadow-blue-500/20', bubbleThem: 'bg-slate-800 text-gray-200 border-white/5 shadow-md', header: 'bg-black/40 border-white/5', text: 'text-white', subText: 'text-slate-400', icon: 'text-slate-400 hover:text-white hover:bg-white/10', inputBg: 'bg-black/40 border border-white/5 text-white shadow-inner', patternUrl: null };
+  }, [theme]);
 
+  // 🔥 Assignment Filters 🔥
   const [activeTab, setActiveTab] = useState('All'); 
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAgentFilter, setSelectedAgentFilter] = useState('All');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('All'); // Pending, Reject etc.
+  const [isAssignMode, setIsAssignMode] = useState(false);
+  const [selectedForAssign, setSelectedForAssign] = useState([]);
+
   const [showLeadDetails, setShowLeadDetails] = useState(true);
 
-  // Batch States
   const [batches, setBatches] = useState([]);
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('All');
 
@@ -34,7 +46,6 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
   const [uploading, setUploading] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
 
-  // Quick Reply States
   const [showTemplates, setShowTemplates] = useState(false);
   const [suggestedReplies, setSuggestedReplies] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -46,19 +57,21 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
 
+  const [showSendTemplateModal, setShowSendTemplateModal] = useState(false);
+  const [approvedTemplates, setApprovedTemplates] = useState([]);
+
   const activeContactRef = useRef(null);
   const scrollRef = useRef(); 
 
-  const token = localStorage.getItem('token');
   const userRole = (localStorage.getItem('role') || '').toLowerCase(); 
   const userName = localStorage.getItem('name') || 'Agent'; 
   const userId = localStorage.getItem('id') || localStorage.getItem('userId');
 
-  // 🔥 FIX 1: loadData එක useCallback ඇතුලට දැම්මා 🔥
   const loadData = useCallback(async () => {
       try {
-          if (!token) return;
-          const headers = { 'Authorization': `Bearer ${token}`, 'token': `Bearer ${token}` };
+          const t = getToken();
+          if (!t) return;
+          const headers = { 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` };
 
           const [conRes, agentRes] = await Promise.all([
               fetch(`${API_BASE_URL}/api/crm/contacts`, { headers }),
@@ -74,54 +87,48 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
               setAgents(Array.isArray(data) ? data : []);
           }
       } catch(err) { console.error("Error loading data:", err); }
-  }, [token]);
+  }, []);
   
-  // Batches අදින එක
   useEffect(() => {
-      if (selectedBiz && selectedBiz.id && token) {
-          const headers = { 'Authorization': `Bearer ${token}`, 'token': `Bearer ${token}` };
-          
-          fetch(`${API_BASE_URL}/api/admin/batches/${selectedBiz.id}`, { headers })
-          .then(res => {
-              if (!res.ok) throw new Error("Unauthorized or Fetch Failed");
-              return res.json();
+      const t = getToken();
+      if (selectedBiz && selectedBiz.id && t) {
+          fetch(`${API_BASE_URL}/api/admin/batches/${selectedBiz.id}`, { 
+              headers: { 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` } 
           })
-          .then(data => {
-              const batchList = Array.isArray(data) ? data : (data.batches || data.data || []);
-              setBatches(batchList);
-          })
+          .then(res => res.json())
+          .then(data => setBatches(Array.isArray(data) ? data : (data.batches || data.data || [])))
           .catch(e => console.error("Batches Fetch Error:", e));
       }
-  }, [selectedBiz?.id, token]); 
+  }, [selectedBiz?.id]); 
 
-  // Data Refresh වෙන Interval එක
   useEffect(() => { 
       loadData(); 
       const contactInterval = setInterval(loadData, 15000); 
       return () => clearInterval(contactInterval);
   }, [loadData]); 
 
-  // 🔥 FIX 2: Selected Contact ගේ මැසේජ් අදින Interval එක 🔥
   useEffect(() => {
       activeContactRef.current = selectedContact;
       let msgInterval;
 
       const fetchMsgs = async () => {
-          if (!activeContactRef.current || !token) return;
+          const t = getToken();
+          if (!activeContactRef.current || !t) return;
           const contactId = activeContactRef.current._id || activeContactRef.current.id;
           
           try {
               const res = await fetch(`${API_BASE_URL}/api/crm/messages/${contactId}`, { 
-                  headers: { token: `Bearer ${token}` } 
+                  headers: { 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` } 
               });
-              const data = await res.json();
               
-              if(Array.isArray(data)) {
-                  setMessages(prev => {
-                      if (prev.length !== data.length) return data;
-                      if (prev.length > 0 && data.length > 0 && prev[prev.length-1]._id !== data[data.length-1]._id) return data;
-                      return prev;
-                  });
+              if (res.ok) {
+                  const data = await res.json();
+                  if(Array.isArray(data)) {
+                      setMessages(prev => {
+                          if (JSON.stringify(prev) !== JSON.stringify(data)) return data;
+                          return prev;
+                      });
+                  }
               }
           } catch(err) { console.error("Message Fetch Error:", err); }
       };
@@ -129,16 +136,10 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
       if (selectedContact) {
           fetchMsgs();
           msgInterval = setInterval(fetchMsgs, 3000);
-          
-          setContacts(prev => prev.map(c => 
-              (c._id || c.id) === (selectedContact._id || selectedContact.id) && (c.unreadCount > 0 || c.unread_count > 0)
-                  ? { ...c, unreadCount: 0, unread_count: 0 } 
-                  : c
-          ));
       }
 
       return () => { if (msgInterval) clearInterval(msgInterval); }
-  }, [selectedContact?._id, selectedContact?.id, token]); 
+  }, [selectedContact?._id, selectedContact?.id]); 
 
   useEffect(() => {
       setMediaPreview(null); setReplyingTo(null); 
@@ -156,20 +157,21 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
 
       setSending(true);
       try {
+          const t = getToken();
           const payload = {
               contactId: targetContactId,
               to: selectedContact.phoneNumber || selectedContact.phone_number,
               text: textToSend, 
               type: typeToSend,
               mediaUrl: mediaToSend,
-              replyToMessageId: replyingTo ? replyingTo.whatsapp_message_id : null,
-              replyContext: replyingTo ? (replyingTo.text || replyingTo.content || 'Media/Attachment') : null,
-              agentName: userRole === 'agent' ? userName : 'Admin' 
+              replyToMessageId: replyingTo ? replyingTo.wa_msg_id : null,
+              replyContext: replyingTo ? (replyingTo.text || replyingTo.content || replyingTo.message || 'Media/Attachment') : null,
+              agentName: userName 
           };
 
           const res = await fetch(`${API_BASE_URL}/api/crm/messages/send`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', token: `Bearer ${token}` },
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` },
               body: JSON.stringify(payload)
           });
           
@@ -179,41 +181,40 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
               if (activeContactRef.current && (activeContactRef.current._id || activeContactRef.current.id) === targetContactId) {
                   setMessages(prev => [...prev, sentMsg]);
                   setMediaPreview(null); setReplyingTo(null); 
+                  setShowTemplates(false);
               }
           }
       } catch(err) { console.error(err); } finally { setSending(false); }
   };
 
+  // 🔥 Contact Filter Logic (Includes Status & Agent Filters) 🔥
   const filteredContacts = useMemo(() => {
     return contacts
       .filter(c => {
-        if (selectedBiz && selectedBiz.id && c.owner_id) {
-            if (String(c.owner_id) !== String(selectedBiz.id) && String(c.ownerId) !== String(selectedBiz.id)) return false;
+        if (selectedBiz && selectedBiz.id && c.owner_id && String(c.owner_id) !== String(selectedBiz.id)) return false;
+        if (activePhase === 'FREE' && selectedBatchFilter !== 'All' && c.batch_id && String(c.batch_id) !== String(selectedBatchFilter)) return false;
+
+        // Role Base Filtering 
+        if (userRole === 'staff' || userRole === 'agent' || userRole === 'coordinator') {
+             if (String(c.assigned_to) !== String(userId) && String(c.assignedTo) !== String(userId)) return false;
         }
 
-        const p = String(c.phase || c.status).toUpperCase();
-        const isFreePhase = p === '1' || p === 'FREE' || p === 'FREE_SEMINAR';
+        // Agent Filter (For Managers)
+        if (selectedAgentFilter !== 'All') {
+            if (String(c.assigned_to) !== String(selectedAgentFilter) && String(c.assignedTo) !== String(selectedAgentFilter)) return false;
+        }
 
-        if (activePhase === 'FREE') {
-            if (!isFreePhase) return false;
-            if (selectedBatchFilter !== 'All' && c.batch_id) {
-                if (String(c.batch_id || c.batchId) !== String(selectedBatchFilter)) return false; 
-            }
-        } else if (activePhase === 'AFTER') {
-            if (isFreePhase) return false; 
+        // Status Filter
+        if (selectedStatusFilter !== 'All') {
+            if (String(c.status) !== String(selectedStatusFilter) && String(c.callStatus) !== String(selectedStatusFilter)) return false;
         }
 
         const contactPhone = c.phoneNumber || c.phone_number || "";
         if (searchTerm && !contactPhone.includes(searchTerm)) return false;
         
-        const assignedId = c.assignedTo || c.assigned_to;
-        const isAssigned = !!assignedId && assignedId !== 'null';
-
-        if (activeTab === 'New Chat') {
-            if (isAssigned) return false;
-        } else if (activeTab === 'Assigned') {
-            if (!isAssigned) return false;
-        }
+        const isAssigned = !!(c.assignedTo || c.assigned_to);
+        if (activeTab === 'New Chat' && isAssigned) return false;
+        if (activeTab === 'Assigned' && !isAssigned) return false;
         return true;
       })
       .sort((a, b) => {
@@ -222,17 +223,66 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
           if (aUnread !== bUnread) return bUnread - aUnread; 
           return new Date(b.lastMessageTime || b.last_message_time || 0) - new Date(a.lastMessageTime || a.last_message_time || 0);
       });
-  }, [contacts, searchTerm, activeTab, activePhase, selectedBiz, selectedBatchFilter]);
+  }, [contacts, searchTerm, activeTab, activePhase, selectedBiz, selectedBatchFilter, userRole, userId, selectedAgentFilter, selectedStatusFilter]);
+
+  // 🔥 Assignment Functions 🔥
+  const handleBulkAssign = async (qty, agentId) => {
+      try {
+          const t = getToken();
+          await fetch(`${API_BASE_URL}/api/crm/leads/bulk-assign`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` },
+              body: JSON.stringify({ batch_id: selectedBatchFilter, staff_id: agentId, qty: qty, order: 'asc' })
+          });
+          loadData();
+          alert("Successfully Assigned!");
+      } catch (e) { alert("Failed to assign"); }
+  };
+
+  const handleSelectedAssign = async (agentId) => {
+      if (selectedForAssign.length === 0) return alert("Select contacts first");
+      try {
+          const t = getToken();
+          await fetch(`${API_BASE_URL}/api/crm/assign-chats`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` },
+              body: JSON.stringify({ contactIds: selectedForAssign, agentId: agentId })
+          });
+          setSelectedForAssign([]);
+          setIsAssignMode(false);
+          loadData();
+          alert("Successfully Assigned Selected!");
+      } catch (e) { alert("Failed to assign"); }
+  };
+
+  const handleResetAssignments = async () => {
+      if (!window.confirm("Are you sure you want to reset all assignments for this batch?")) return;
+      try {
+          const t = getToken();
+          await fetch(`${API_BASE_URL}/api/crm/reset-assignments`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` },
+              body: JSON.stringify({ batch_id: selectedBatchFilter })
+          });
+          loadData();
+          alert("Assignments Reset!");
+      } catch (e) { alert("Failed to reset"); }
+  };
 
   // Dummy functions to prevent crashes
+  const fetchApprovedTemplates = async () => {};
+  const handleSendTemplateMessage = async (t) => { setShowSendTemplateModal(false); };
   const fetchQuickReplies = () => {};
   const handleSelectAutoSuggest = (t) => { setNewMessage(t.message); setShowTemplates(false); };
-  const fetchApprovedTemplates = () => {};
   const handleSelectTemplate = (t) => { setNewMessage(t.message); setShowTemplates(false); };
   const handleTemplateMediaUpload = (e) => {};
   const handleCreateQuickReply = () => {};
   const handleDeleteQuickReply = (id) => {};
-  const handleTyping = (e) => { setNewMessage(e.target.value); };
+  const handleTyping = (e) => { 
+      setNewMessage(e.target.value); 
+      if (e.target.value.endsWith('/')) setShowTemplates(true);
+      else if (e.target.value.trim() === '') setShowTemplates(false);
+  };
   const handleFileUpload = (e) => {};
   const startRecording = () => {};
   const stopRecording = () => {};
@@ -241,43 +291,72 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
 
   const stateProps = {
     contacts, agents, messages, selectedContact, setSelectedContact,
-    isDarkMode, fontIndex, theme, setTheme, currentTheme,
-    activeTab, setActiveTab, searchTerm, setSearchTerm, 
-    showLeadDetails, setShowLeadDetails,
-    newMessage, setNewMessage, sending, mediaPreview, setMediaPreview, uploading, 
+    isDarkMode, fontIndex, theme, setTheme, currentTheme, activePhase, batches, selectedBatchFilter, setSelectedBatchFilter,
+    activeTab, setActiveTab, searchTerm, setSearchTerm, showLeadDetails, setShowLeadDetails,
+    newMessage, setNewMessage, sending, mediaPreview, setMediaPreview, uploading, setUploading,
     replyingTo, setReplyingTo, handleSendMessage, filteredContacts, userRole, userId,
-    showTemplates, setShowTemplates, suggestedReplies, templates, 
-    isCreatingTemplate, setIsCreatingTemplate, newTemplateTitle, setNewTemplateTitle, 
-    newTemplateMsg, setNewTemplateMsg, uploadingTemplateMedia, templateMediaPreview, setTemplateMediaPreview,
-    isRecording, recordingTime, fetchQuickReplies, handleSelectAutoSuggest, fetchApprovedTemplates,
-    handleSelectTemplate, handleTemplateMediaUpload, handleCreateQuickReply, handleDeleteQuickReply,
-    handleTyping, handleFileUpload, startRecording, stopRecording, cancelRecording, formatTime, scrollRef
+    showTemplates, setShowTemplates, templates, setTemplates, isCreatingTemplate, setIsCreatingTemplate,
+    newTemplateTitle, setNewTemplateTitle, newTemplateMsg, setNewTemplateMsg,
+    isRecording, setIsRecording, recordingTime, setRecordingTime, scrollRef,
+    selectedAgentFilter, setSelectedAgentFilter, selectedStatusFilter, setSelectedStatusFilter,
+    isAssignMode, setIsAssignMode, selectedForAssign, setSelectedForAssign, handleBulkAssign, handleSelectedAssign, handleResetAssignments,
+    loggedInUser: { id: userId, role: userRole } // For RightPanel
   };
 
   return (
-      <div className="flex flex-col w-full h-full gap-4">
-          {activePhase === 'FREE' && (
-              <div className="flex justify-end items-center px-2 shrink-0 animate-in fade-in">
-                  <div className="flex items-center gap-3 bg-slate-900/60 border border-blue-500/30 pl-4 pr-2 py-1.5 rounded-xl backdrop-blur-md shadow-lg z-40">
-                      <Layers size={16} className="text-blue-400" />
-                      <span className="text-sm font-bold text-slate-300 mr-2">Filter by Batch:</span>
-                      <select 
-                          value={selectedBatchFilter}
-                          onChange={(e) => setSelectedBatchFilter(e.target.value)}
-                          className="bg-blue-500/10 text-blue-300 font-bold outline-none border border-blue-500/20 rounded-lg px-3 py-1.5 cursor-pointer text-sm hover:bg-blue-500/20 transition-colors"
-                      >
-                          <option value="All">🌍 All Batches</option>
-                          {batches.map(b => (
-                              <option key={b.id} value={b.id}>{b.name}</option>
-                          ))}
-                      </select>
+      <div className="flex flex-col w-full h-full gap-4 relative">
+          
+          {/* Top Bar for Manager Actions */}
+          {(userRole === 'admin' || userRole === 'manager' || userRole === 'superadmin') && (
+              <div className="flex justify-between items-center px-4 py-2 shrink-0 animate-in fade-in bg-slate-900/60 border border-white/5 rounded-2xl backdrop-blur-md shadow-lg z-40">
+                  <div className="flex items-center gap-4">
+                      {activePhase === 'FREE' && (
+                          <div className="flex items-center gap-2">
+                              <Layers size={16} className="text-blue-400" />
+                              <select value={selectedBatchFilter} onChange={(e) => setSelectedBatchFilter(e.target.value)} className="bg-transparent text-white font-bold outline-none text-sm cursor-pointer border-b border-white/20 pb-1">
+                                  <option value="All" className="bg-slate-900">🌍 All Batches</option>
+                                  {batches.map(b => (
+                                      <option key={b.id} value={b.id} className="bg-slate-900">{b.name}</option>
+                                  ))}
+                              </select>
+                          </div>
+                      )}
+                      
+                      <div className="flex items-center gap-2">
+                          <Users size={16} className="text-emerald-400" />
+                          <select value={selectedAgentFilter} onChange={(e) => setSelectedAgentFilter(e.target.value)} className="bg-transparent text-white font-bold outline-none text-sm cursor-pointer border-b border-white/20 pb-1">
+                              <option value="All" className="bg-slate-900">All Agents</option>
+                              {agents.map(a => (
+                                  <option key={a.id} value={a.id} className="bg-slate-900">{a.first_name || a.name}</option>
+                              ))}
+                          </select>
+                      </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                      {isAssignMode ? (
+                          <div className="flex items-center gap-2 bg-blue-500/20 px-3 py-1 rounded-lg border border-blue-500/30">
+                              <span className="text-xs font-bold text-blue-300">{selectedForAssign.length} Selected</span>
+                              <select className="bg-slate-900 text-white text-xs p-1 rounded outline-none border border-white/10" onChange={(e) => { if(e.target.value) handleSelectedAssign(e.target.value); }}>
+                                  <option value="">Assign To...</option>
+                                  {agents.map(a => (<option key={a.id} value={a.id}>{a.first_name || a.name}</option>))}
+                              </select>
+                              <button onClick={() => { setIsAssignMode(false); setSelectedForAssign([]); }} className="text-xs text-red-400 hover:text-red-300 ml-2">Cancel</button>
+                          </div>
+                      ) : (
+                          <button onClick={() => setIsAssignMode(true)} className="text-xs font-bold px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition border border-white/10 text-slate-300">Select & Assign</button>
+                      )}
+                      <button onClick={handleResetAssignments} className="text-xs font-bold px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition border border-red-500/20 flex items-center gap-1" title="Reset All Assignments in Batch"><RefreshCw size={12}/> Reset</button>
                   </div>
               </div>
           )}
-          <div className={`flex w-full flex-1 rounded-3xl overflow-hidden shadow-2xl relative transition-all border bg-slate-900/40 border-white/10 backdrop-blur-md`}>
+
+          {/* MAIN CRM LAYOUT */}
+          <div className="flex w-full flex-1 rounded-3xl overflow-hidden shadow-2xl relative transition-all border bg-slate-900/40 border-white/10 backdrop-blur-md">
             <ContactSidebar {...stateProps} />
             <ChatArea {...stateProps} />
             {showLeadDetails && <CampaignSidebar {...stateProps} />}
+            <ChatModals {...stateProps} />
           </div>
       </div>
   );
