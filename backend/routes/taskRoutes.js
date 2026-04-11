@@ -4,14 +4,15 @@ const { protect } = require('../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
 
+// 🔥 FIXED: Added 'updateTaskTemplate' to the import list 🔥
 const { 
     createTask, completeTask, requestUnlock, approveUnlock, getMyTasks,
     getDailyTasks, createDailyTask, getScheduleTemplates, createScheduleWithTasks,
     getBatchSchedule, addSubjectTemplate, getPendingApprovals, deleteSubjectTemplate, 
-    deleteSchedule, approveStaffTask, rejectStaffTask, addTaskTemplate, 
+    deleteSchedule, approveStaffTask, rejectStaffTask, addTaskTemplate, updateTaskTemplate, 
     deleteTaskTemplate, getStaffList, getBatchStaff, assignStaffToBatch, 
     getCoordinatorOverview, removeStaffFromBatch, assignTaskToExistingSchedule, 
-    getTasksForSchedule, deleteAssignedTask,lockTask, managerUnlockTask
+    getTasksForSchedule, deleteAssignedTask, lockTask, managerUnlockTask, assignTaskToStaff
 } = require('../controllers/taskController');
 
 // --- Multer Configuration for Proof Uploads ---
@@ -45,6 +46,8 @@ router.post('/approve-unlock', protect, approveUnlock);
 router.get('/manager/tasks', protect, getDailyTasks);
 router.post('/manager/tasks/add', protect, createDailyTask);
 
+router.put('/manager/task-templates/update', protect, updateTaskTemplate);
+
 // Templates & Subjects
 router.get('/manager/templates', protect, getScheduleTemplates);
 router.post('/manager/subjects/add', protect, addSubjectTemplate);
@@ -60,7 +63,7 @@ router.post('/manager/schedule/:scheduleId/tasks', protect, assignTaskToExisting
 router.get('/manager/schedule/:scheduleId/tasks', protect, getTasksForSchedule);
 router.delete('/manager/tasks/:taskId', protect, deleteAssignedTask);
 
-// 🔥 Approvals (මේ ටික තමයි මගහැරිලා තිබ්බේ) 🔥
+// Approvals
 router.get('/manager/approvals', protect, getPendingApprovals);
 router.post('/manager/approvals/approve', protect, approveStaffTask);
 router.post('/manager/approvals/reject', protect, rejectStaffTask);
@@ -71,8 +74,11 @@ router.get('/manager/batch-staff/:batchId', protect, getBatchStaff);
 router.post('/manager/batch-staff/assign', protect, assignStaffToBatch);
 router.delete('/manager/batch-staff/remove/:batchId/:staffId', protect, removeStaffFromBatch);
 
-router.post('/lock', protect, lockTask); // Staff/Coordinator route එකක් විදියට
-router.post('/manager/approvals/unlock', protect, managerUnlockTask); // Manager route එකක් විදියට
+router.post('/lock', protect, lockTask); 
+router.post('/manager/approvals/unlock', protect, managerUnlockTask);
+
+// Assign Task to Staff Route
+router.post('/manager/tasks/assign', protect, assignTaskToStaff);
 
 
 module.exports = router;

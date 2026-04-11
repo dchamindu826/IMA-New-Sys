@@ -610,16 +610,26 @@ const getManagerBatches = async (req, res) => {
 const getManagerFullBatches = async (req, res) => {
     try {
         const userId = req.user.id;
-        
-        const business = await prisma.businesses.findFirst({
-            where: { OR: [{ head_manager_id: parseInt(userId) }, { ass_manager_id: parseInt(userId) }] }
-        });
+        const userRole = req.user.role;
 
-        if (!business) return res.status(200).json([]);
+        let batches = [];
 
-        const batches = await prisma.batches.findMany({
-            where: { business_id: business.id }
-        });
+        // 1. Admin, Director කෙනෙක් නම් කිසිම ලොක් එකක් නැතුව සේරම Batches ගන්නවා
+        if (['System Admin', 'superadmin', 'Director', 'Admin'].includes(userRole)) {
+            batches = await prisma.batches.findMany();
+        } else {
+            // 2. Manager කෙනෙක් නම් එයාට අදාල Business එකේ Batches විතරක් ගන්නවා
+            const managerBusinesses = await prisma.businesses.findMany({
+                where: { OR: [{ head_manager_id: parseInt(userId) }, { ass_manager_id: parseInt(userId) }] }
+            });
+
+            if (managerBusinesses.length === 0) return res.status(200).json([]);
+
+            const bIds = managerBusinesses.map(b => b.id);
+            batches = await prisma.batches.findMany({
+                where: { business_id: { in: bIds } }
+            });
+        }
 
         if (batches.length === 0) return res.status(200).json([]);
 
@@ -635,12 +645,20 @@ const getManagerFullBatches = async (req, res) => {
             where: { group_id: { in: groupIds } }
         });
 
+        // 3. Frontend එකේ Filter එකට අහු වෙන්න Business Object එකත් Map කරනවා
+        const allBusinesses = await prisma.businesses.findMany();
+
         const formattedBatches = batches.map(batch => {
+            const batchBizId = batch.business_id ? batch.business_id.toString() : null;
+            const businessObj = allBusinesses.find(b => b.id.toString() === batchBizId) || null;
+
             const batchGroups = groups.filter(g => g.batch_id.toString() === batch.id.toString()).map(group => {
                 const groupCourses = courses.filter(c => c.group_id.toString() === group.id.toString());
                 return { ...group, courses: groupCourses };
             });
-            return { ...batch, groups: batchGroups };
+            
+            // Business object එක batch එක ඇතුලට දානවා
+            return { ...batch, business: businessObj, groups: batchGroups };
         });
 
         return res.status(200).json(safeJson(formattedBatches));

@@ -156,6 +156,7 @@ const createGroup = async (req, res) => {
                 created_at: new Date()
             }
         });
+        const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
         res.status(201).json({ message: "Group Created Successfully", data: safeJson(newGroup) });
     } catch (error) {
         console.error("Create Group Error:", error);
@@ -176,6 +177,7 @@ const updateGroup = async (req, res) => {
                 updated_at: new Date()
             }
         });
+        const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
         res.status(200).json({ message: "Group Updated Successfully", data: safeJson(updatedGroup) });
     } catch (error) {
         console.error("Update Group Error:", error);
@@ -289,37 +291,48 @@ const getBatchesFull = async (req, res) => {
 
         let batches = [];
 
-        // 1. Admin කෙනෙක් නම් මුළු System එකේම තියෙන ඒවා ගන්නවා
+        // 1. Admin කෙනෙක් නම් මුළු System එකේම තියෙන ඒවා ගන්නවා 
+        // (මෙහිදී status filter එක අයින් කරා සහ prisma crash වෙන include කෑල්ල අයින් කරා)
         if (['System Admin', 'superadmin', 'Director', 'Admin'].includes(userRole)) {
-            batches = await prisma.batches.findMany({
-                where: { status: 1 },
-                include: {
-                    business: true, // Business එකේ නම සහ විස්තර
-                    groups: { include: { courses: true } } // ඒ batch එකේ subjects
-                }
-            });
+            batches = await prisma.batches.findMany();
         } 
         // 2. Manager කෙනෙක් නම් එයාට අදාල Business එකේ ඒවා විතරයි
         else if (['Manager', 'Ass Manager'].includes(userRole)) {
-            batches = await prisma.batches.findMany({
+            const managerBusinesses = await prisma.businesses.findMany({
                 where: {
-                    business: {
-                        OR: [
-                            { head_manager_id: parseInt(userId) },
-                            { ass_manager_id: parseInt(userId) }
-                        ]
-                    },
-                    status: 1
-                },
-                include: {
-                    business: true,
-                    groups: { include: { courses: true } }
+                    OR: [
+                        { head_manager_id: parseInt(userId) },
+                        { ass_manager_id: parseInt(userId) }
+                    ]
                 }
+            });
+            const bIds = managerBusinesses.map(b => b.id);
+            
+            batches = await prisma.batches.findMany({
+                where: { business_id: { in: bIds } }
             });
         }
 
+        // 3. Manual Join - මෙතනදී අපි Business, Groups සහ Courses කියන සේරම data අරගෙන 
+        // Array එකට Manual Join කරනවා, ඒකෙන් Prisma Crash එක 100% ක් නවතිනවා.
+        const allBusinesses = await prisma.businesses.findMany();
+        const allGroups = await prisma.groups.findMany();
+        const allCourses = await prisma.courses.findMany();
+
+        const fullBatches = batches.map(batch => {
+            const batchBizId = batch.business_id ? batch.business_id.toString() : null;
+            const business = allBusinesses.find(b => b.id.toString() === batchBizId) || null;
+            
+            const groups = allGroups.filter(g => g.batch_id && g.batch_id.toString() === batch.id.toString()).map(group => {
+                const courses = allCourses.filter(c => c.group_id && c.group_id.toString() === group.id.toString());
+                return { ...group, courses };
+            });
+
+            return { ...batch, business, groups };
+        });
+
         // JSON එකට හරවලා යවනවා (BigInt ප්‍රශ්න එන්නේ නැති වෙන්න)
-        const safeData = JSON.parse(JSON.stringify(batches, (key, value) =>
+        const safeData = JSON.parse(JSON.stringify(fullBatches, (key, value) =>
             typeof value === 'bigint' ? value.toString() : value
         ));
 
