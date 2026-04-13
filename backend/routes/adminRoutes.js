@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const jwt = require('jsonwebtoken'); // 🔥 අලුතින් එකතු කළා Ghost Login එකට
 const { protect } = require('../middleware/authMiddleware');
 
-// 🔥 ඔක්කොම එකම තැනින් Import කරනවා 🔥
 const { 
     index, addAnnouncement, updateAnnouncement, deleteAnnouncement, addPost,
     getBusinesses, addBusiness, editBusiness, changeBusinessStatus, getBatches, addBatch,
@@ -64,12 +64,7 @@ const uploadUserImg = multer({ storage: userImgStorage });
 
 const { getAllBusinessesForAdmin } = require('../controllers/adminController');
 
-
-
-
 // --- ROUTES ---
-
-
 router.get('/dashboard', protect, index);
 router.post('/announcement/add', protect, addAnnouncement);
 router.put('/announcement/update', protect, updateAnnouncement);
@@ -80,7 +75,6 @@ router.get('/businesses', protect, getBusinesses);
 router.post('/business/add', protect, uploadIcon.single('logo'), addBusiness);
 router.put('/business/update', protect, uploadIcon.single('logo'), editBusiness);
 router.put('/business/status', protect, changeBusinessStatus);
-// 🔥 Business Assign Route එක
 router.put('/businesses/:id/assign', protect, assignBusinessManager); 
 
 router.get('/batches/:businessId', protect, getBatches);
@@ -108,10 +102,9 @@ router.post('/paper/add', protect, uploadDoc.single('paperFile'), addPaper);
 router.post('/structured-paper/add', protect, uploadDoc.single('file'), addStructuredPaper);
 router.post('/marking/add', protect, uploadAnswer.single('file'), addMarkingAnswer);
 
-// 🔥 Staff Routes ටික 🔥
 router.get('/staff', protect, getStaff);
 router.post('/staff/add', protect, uploadUserImg.single('profileImg'), addStaff);
-router.delete('/staff/:id', protect, deleteStaff); // මකන Route එක
+router.delete('/staff/:id', protect, deleteStaff);
 router.get('/staff/view/:id', protect, viewStaff);
 
 router.post('/teacher-payment/add', protect, addTeacherPaymentInfo);
@@ -153,7 +146,6 @@ router.get('/audit-trail', protect, getAuditTrail);
 router.post('/lead/add', protect, addNewLead);
 router.put('/staff/update/:id', protect, updateStaff);
 
-//mangers dashboard
 router.get('/manager/overview', protect, getManagerOverview);
 router.get('/manager/batches', protect, getManagerBatches);
 router.get('/manager/schedule', protect, getBatchSchedule);
@@ -169,11 +161,9 @@ router.delete('/batch/delete', protect, deleteBatch);
 
 router.get('/overview', protect, getManagerOverview);
 
-// CRM Routes (මේ ටික ෆයිල් එකේ අගට දාන්න)
 router.get('/business/:businessId/crm', protect, getBusinessCrm);
 router.post('/business/crm/save', protect, saveBusinessCrm);
 
-// Media & Knowledge Base Uploads (දැනට documents folder එකම පාවිච්චි කරනවා)
 router.post('/business/crm/media', protect, uploadDoc.single('file'), uploadCrmMedia);
 router.get('/business/crm/knowledge-base', protect, getKnowledgeBase);
 router.post('/business/crm/knowledge-base', protect, uploadDoc.single('file'), addKnowledgeBase);
@@ -181,7 +171,110 @@ router.delete('/business/crm/knowledge-base/:docId', protect, deleteKnowledgeBas
 
 router.delete('/business/delete', protect, deleteBusiness);
 
+// ===============================================
+// 🔥 අලුත් Student Database & Ghost Login Routes 🔥
+// ===============================================
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
 
+router.get('/students-list', protect, async (req, res) => {
+    try {
+        const { search, business_id } = req.query;
+        
+        let whereClause = { role: 'user' };
 
+        // Search by Name, Phone, or NIC
+        if (search && search.trim() !== '') {
+            whereClause.OR = [
+                { fName: { contains: search } },
+                { lName: { contains: search } },
+                { phone: { contains: search } },
+                { nic: { contains: search } }
+            ];
+        }
+
+        // Get basic student list first (🔥 FIXED: Address fields dynamically retrieved 🔥)
+        let students = await prisma.users.findMany({
+            where: whereClause,
+            select: { 
+                id: true, 
+                fName: true, 
+                lName: true, 
+                phone: true, 
+                nic: true, 
+                houseNo: true,
+                streetName: true,
+                village: true,
+                town: true,
+                district: true 
+            },
+            orderBy: { id: 'desc' }
+        });
+
+        // Filter by Business ID manually to avoid Prisma relation errors
+        if (business_id && business_id !== 'all') {
+            const studentIds = students.map(s => s.id);
+            
+            const courseUsers = await prisma.course_user.findMany({ where: { user_id: { in: studentIds } } });
+            const courseIds = [...new Set(courseUsers.map(cu => cu.course_id))];
+            
+            const courses = await prisma.courses.findMany({ where: { id: { in: courseIds } } });
+            const groupIds = [...new Set(courses.map(c => c.group_id))];
+            
+            const groups = await prisma.groups.findMany({ where: { id: { in: groupIds } } });
+            const batchIds = [...new Set(groups.map(g => g.batch_id))];
+            
+            const batches = await prisma.batches.findMany({ 
+                where: { id: { in: batchIds }, business_id: parseInt(business_id) } 
+            });
+            
+            const validBatchIds = batches.map(b => b.id);
+            const validGroupIds = groups.filter(g => validBatchIds.includes(g.batch_id)).map(g => g.id);
+            const validCourseIds = courses.filter(c => validGroupIds.includes(c.group_id)).map(c => c.id);
+            const validUserIds = courseUsers.filter(cu => validCourseIds.includes(cu.course_id)).map(cu => cu.user_id);
+            
+            students = students.filter(s => validUserIds.includes(s.id));
+        }
+
+        // 🔥 Format the address before sending to frontend
+        const formattedStudents = students.map(s => {
+            const addressParts = [s.houseNo, s.streetName, s.village, s.town, s.district].filter(Boolean);
+            return {
+                ...s,
+                address: addressParts.length > 0 ? addressParts.join(', ') : 'N/A'
+            };
+        });
+
+        // Limit results to 100 to avoid freezing
+        res.status(200).json(safeJson(formattedStudents.slice(0, 100)));
+    } catch (error) {
+        console.error("Student List Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 🔥 Ghost Login Route එක (404 Error Fix)
+router.post('/ghost-login/:id', protect, async (req, res) => {
+    try {
+        const targetUser = await prisma.users.findUnique({ where: { id: BigInt(req.params.id) } });
+        if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+        const ghostToken = jwt.sign(
+            { id: targetUser.id.toString(), role: targetUser.role, businessName: targetUser.business_name },
+            process.env.JWT_SEC || 'my_secret_key',
+            { expiresIn: "1d" }
+        );
+
+        res.status(200).json({ 
+            message: "Ghost Access Granted", 
+            token: ghostToken, 
+            user: safeJson(targetUser) 
+        });
+    } catch (err) {
+        console.error("Ghost Login Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 module.exports = router;

@@ -57,10 +57,29 @@ const requestUnlock = async (req, res) => {
 
 const approveUnlock = async (req, res) => {
     try {
-        const { task_id, new_deadline } = req.body;
-        await prisma.daily_tasks.update({ where: { id: parseInt(task_id) }, data: { is_locked: false, unlock_status: 'APPROVED', deadline_date: new Date(new_deadline) } });
-        return res.status(200).json({ message: "Task unlocked." });
-    } catch (error) { return res.status(500).json({ message: error.message }); }
+        const { task_id, new_time } = req.body;
+        
+        if (!new_time) return res.status(400).json({ message: "New time is required" });
+
+        // 🔥 අද දවස ගන්නවා (පරණ දවස තිබ්බොත් ආයෙත් Lock වෙන නිසා)
+        const today = new Date();
+
+        await prisma.daily_tasks.update({
+            where: { id: parseInt(task_id) },
+            data: {
+                end_time: new_time,          // අලුත් වෙලාව
+                deadline_date: today,        // දවස අදට මාරු කරනවා
+                is_locked: false,            // Lock එක අයින් කරනවා
+                unlock_status: "APPROVED",   // Unlock කරපු බව සටහන් කරනවා (Penalty එකට ඕනෙ වෙනවා)
+                manager_status: "PENDING"    // Staff එකට ආපහු Submit කරන්න පුළුවන් වෙන්න PENDING කරනවා
+            }
+        });
+
+        return res.status(200).json({ message: "Task unlocked successfully!" });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Server error unlocking task." });
+    }
 };
 
 const getMyTasks = async (req, res) => {
@@ -239,20 +258,37 @@ const getPendingApprovals = async (req, res) => {
     try {
         const { staffId, batchId } = req.query;
         let whereCondition = { manager_status: "WAITING_APPROVAL" };
+        
         if (staffId && staffId !== 'all') whereCondition.staff_id = parseInt(staffId);
         if (batchId && batchId !== 'all') whereCondition.batch_id = BigInt(batchId.toString());
 
-        const pendingTasks = await prisma.daily_tasks.findMany({ where: whereCondition });
+        // Unlock request කරපු ඒවත් UI එකට යවන්න ඕනෙ නිසා OR දානවා
+        const pendingTasks = await prisma.daily_tasks.findMany({ 
+            where: {
+                OR: [
+                    whereCondition,
+                    { unlock_status: "REQUESTED", ...(staffId !== 'all' && {staff_id: parseInt(staffId)}) }
+                ]
+            }
+        });
         
         let successWhere = { manager_status: { notIn: ["PENDING", "WAITING_APPROVAL"] } };
         let approvedWhere = { manager_status: "APPROVED" };
+        let penalizedWhere = { manager_status: "APPROVED", unlock_status: "APPROVED" }; // Late වෙලා කරපු ඒවා
         
-        if (staffId && staffId !== 'all') { successWhere.staff_id = parseInt(staffId); approvedWhere.staff_id = parseInt(staffId); }
-        if (batchId && batchId !== 'all') { successWhere.batch_id = BigInt(batchId.toString()); approvedWhere.batch_id = BigInt(batchId.toString()); }
-
+        if (staffId && staffId !== 'all') { 
+            successWhere.staff_id = parseInt(staffId); 
+            approvedWhere.staff_id = parseInt(staffId); 
+            penalizedWhere.staff_id = parseInt(staffId);
+        }
+        
         const totalCompleted = await prisma.daily_tasks.count({ where: successWhere });
         const approvedCount = await prisma.daily_tasks.count({ where: approvedWhere });
-        const successRate = totalCompleted === 0 ? 0 : Math.round((approvedCount / totalCompleted) * 100);
+        const penalizedCount = await prisma.daily_tasks.count({ where: penalizedWhere });
+
+        // 🔥 Penalty Calculation: Late වෙච්ච හැම Task එකකටම 50% ක penalty එකක් (අඩුවීමක්) වෙනවා
+        const actualSuccessScore = approvedCount - (penalizedCount * 0.5); 
+        const successRate = totalCompleted === 0 ? 0 : Math.max(0, Math.round((actualSuccessScore / totalCompleted) * 100));
 
         return res.status(200).json({ tasks: safeJson(pendingTasks), successRate });
     } catch(e) { return res.status(500).json({message: "Server Error"}); }
@@ -261,45 +297,56 @@ const getPendingApprovals = async (req, res) => {
 const approveStaffTask = async (req, res) => {
     try {
         const { taskId } = req.body;
-        const updatedTask = await prisma.daily_tasks.update({ where: { id: parseInt(taskId) }, data: { manager_status: "APPROVED" } });
-        const schedule = await prisma.class_schedules.findUnique({ where: { id: updatedTask.schedule_id } });
+        const updatedTask = await prisma.daily_tasks.update({ 
+            where: { id: parseInt(taskId) }, 
+            data: { manager_status: "APPROVED" } 
+        });
 
-        if (schedule && updatedTask.submitted_proof) {
-            let proofObj = {};
-            try { proofObj = JSON.parse(updatedTask.submitted_proof); } catch(e) { proofObj = { link: updatedTask.submitted_proof }; }
+        // 🔥 Content Hub එකට යවන්න ඕනෙ Task Types ටික විතරක් මෙතන දාන්න
+        const hubTaskTypes = ['live', 'recording', 'document', 'sPaper', 'paper'];
 
-            if (proofObj.noChanges === true) {
-                return res.status(200).json({ message: "Task Approved (No content changes required)!" });
-            }
+        // ඒ type එකක් නම් විතරක් Content Hub (contents table) එකට push කරන්න
+        if (hubTaskTypes.includes(updatedTask.task_type)) {
+            const schedule = await prisma.class_schedules.findUnique({ where: { id: updatedTask.schedule_id } });
 
-            let contentType = proofObj.type || 1; 
+            if (schedule && updatedTask.submitted_proof) {
+                let proofObj = {};
+                try { proofObj = JSON.parse(updatedTask.submitted_proof); } catch(e) { proofObj = { link: updatedTask.submitted_proof }; }
 
-            const newContent = await prisma.contents.create({
-                data: {
-                    title: proofObj.title || `${schedule.subject} - ${updatedTask.task_type}`,
-                    date: schedule.date,
-                    startTime: proofObj.startTime || schedule.start_time,
-                    endTime: proofObj.endTime || schedule.end_time,
-                    link: proofObj.link, 
-                    type: contentType,
-                    zoomMeetingId: proofObj.zoomMeetingId || null,
-                    content_group_id: proofObj.contentGroupId ? parseInt(proofObj.contentGroupId) : null,
-                    isFree: proofObj.isFree === true || proofObj.isFree === 'true',
-                    paperTime: proofObj.paperTime ? parseInt(proofObj.paperTime) : null,
-                    questionCount: proofObj.questionCount ? parseInt(proofObj.questionCount) : null
+                if (proofObj.noChanges !== true) {
+                    let contentType = proofObj.type || 1; 
+
+                    const newContent = await prisma.contents.create({
+                        data: {
+                            title: proofObj.title || `${schedule.subject} - ${updatedTask.task_type}`,
+                            date: schedule.date,
+                            startTime: proofObj.startTime || schedule.start_time,
+                            endTime: proofObj.endTime || schedule.end_time,
+                            link: proofObj.link, 
+                            type: contentType,
+                            zoomMeetingId: proofObj.zoomMeetingId || null,
+                            content_group_id: proofObj.contentGroupId ? parseInt(proofObj.contentGroupId) : null,
+                            isFree: proofObj.isFree === true || proofObj.isFree === 'true',
+                            paperTime: proofObj.paperTime ? parseInt(proofObj.paperTime) : null,
+                            questionCount: proofObj.questionCount ? parseInt(proofObj.questionCount) : null
+                        }
+                    });
+
+                    if (proofObj.selectedCourses && Array.isArray(proofObj.selectedCourses) && proofObj.selectedCourses.length > 0) {
+                        const contentCourseData = proofObj.selectedCourses.map(courseId => ({
+                            content_id: newContent.id, course_id: BigInt(courseId), type: contentType,
+                            itemOrder: "0", created_at: new Date()
+                        }));
+                        await prisma.content_course.createMany({ data: contentCourseData });
+                    }
                 }
-            });
-
-            if (proofObj.selectedCourses && Array.isArray(proofObj.selectedCourses) && proofObj.selectedCourses.length > 0) {
-                const contentCourseData = proofObj.selectedCourses.map(courseId => ({
-                    content_id: newContent.id, course_id: BigInt(courseId), type: contentType,
-                    itemOrder: "0", created_at: new Date()
-                }));
-                await prisma.content_course.createMany({ data: contentCourseData });
             }
+            return res.status(200).json({ message: "Task Approved & Content Published to Hub! 🎉" });
+        } else {
+            // Custom Task එකක් නම් නිකම්ම Approve කරනවා
+            return res.status(200).json({ message: "Custom Task Approved Successfully! ✅" });
         }
-        return res.status(200).json({ message: "Task Approved & Content Published to Hub! 🎉" });
-    } catch(e) { return res.status(500).json({ message: "Error" }); }
+    } catch(e) { return res.status(500).json({ message: "Error approving task." }); }
 };
 
 const rejectStaffTask = async (req, res) => {

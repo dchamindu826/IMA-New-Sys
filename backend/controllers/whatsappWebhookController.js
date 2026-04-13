@@ -72,7 +72,7 @@ const callGeminiApi = async (prompt, keysArray, isJson = false) => {
             );
             return response.data.candidates[0].content.parts[0].text;
         } catch (error) {
-            console.error(`❌ Gemini API Error with Key ${i + 1} (Will try next key):`, error.response ? JSON.stringify(error.response.data) : error.message);
+            console.error(`❌ Gemini API Error with Key ${i + 1}:`, error.message);
         }
     }
     return null; 
@@ -130,7 +130,50 @@ const handleIncomingMessage = async (req, res) => {
                             contact = await prisma.whatsapp_leads.create({
                                 data: { phone_number: senderPhone, owner_id: Number(crmConfig.business_id), customer_name: `Guest ${senderPhone.slice(-4)}`, unread_count: 1, phase: phaseName, status: 'New', batch_id: activeBatchId }
                             });
-                        } catch (e) {}
+
+                            // 🔥 AUTO ASSIGN LOGIC 🔥
+                            // අලුත් කෙනෙක් ආවම Queue එක බලලා Assign කරනවා
+                            if (activeBatchId) {
+                                const assignments = await prisma.batch_staff_assignments.findMany({
+                                    where: { batch_id: BigInt(activeBatchId) },
+                                    orderBy: { id: 'asc' }
+                                });
+
+                                for (let assign of assignments) {
+                                    if (assign.assigned_count < assign.quota) {
+                                        // 1. WhatsApp Inbox එකට Assign කරනවා
+                                        await prisma.whatsapp_leads.update({
+                                            where: { id: contact.id },
+                                            data: { assigned_to: BigInt(assign.staff_id), status: 'Assigned' }
+                                        });
+
+                                        // 2. Call Campaign එකට (leads table) Lead එක දානවා
+                                        try {
+                                            await prisma.leads.create({
+                                                data: {
+                                                    phone: senderPhone,
+                                                    fName: `Guest ${senderPhone.slice(-4)}`,
+                                                    leadType: crmConfig.phase, // 'FREE_SEMINAR' etc.
+                                                    batch_id: BigInt(activeBatchId),
+                                                    business_id: BigInt(crmConfig.business_id),
+                                                    assigned_to: assign.staff_id,
+                                                    status: 'PHASE_1'
+                                                }
+                                            });
+                                        } catch (leadErr) { console.error("Call Campaign Lead Create Error:", leadErr); }
+
+                                        // 3. Quota එක අප්ඩේට් කරනවා
+                                        await prisma.batch_staff_assignments.update({
+                                            where: { id: assign.id },
+                                            data: { assigned_count: assign.assigned_count + 1 }
+                                        });
+                                        console.log(`✅ Auto Assigned ${senderPhone} to Agent ID: ${assign.staff_id}`);
+                                        break; 
+                                    }
+                                }
+                            }
+
+                        } catch (e) { console.error(e); }
                     } else {
                         contact = await prisma.whatsapp_leads.update({
                             where: { id: contact.id },
@@ -146,7 +189,7 @@ const handleIncomingMessage = async (req, res) => {
                     } catch (e) {}
 
                     // ==========================================
-                    // 🤖 AI BOT LOGIC (RAG + KEY ROTATION + FALLBACK FIX) 🤖
+                    // 🤖 AI BOT LOGIC 
                     // ==========================================
                     if (crmConfig.is_ai_active && crmConfig.gemini_keys) {
                         console.log(`🧠 AI Bot Activated for ${senderPhone}...`);
@@ -200,7 +243,6 @@ const handleIncomingMessage = async (req, res) => {
                                     if (kwResText) keywords = JSON.parse(kwResText.replace(/```json/g, '').replace(/```/g, '').trim());
                                 } catch (e) {}
 
-                                // 🔥 Python Logic 2: Vector/Keyword Search (Database Query with FALLBACK) 🔥
                                 let docs = [];
                                 if (keywords.length > 0) {
                                     const searchTerms = [];
@@ -217,7 +259,6 @@ const handleIncomingMessage = async (req, res) => {
                                     });
                                 } 
                                 
-                                // 🔥 FIX: Keyword Search එකෙන් මොකුත්ම අහු වුණේ නැත්නම්, Database එකේ තියෙන අන්තිම Documents 10 ම ගන්නවා! (No empty context) 🔥
                                 if (docs.length === 0) {
                                     docs = await prisma.crm_documents.findMany({
                                         where: { business_id: crmConfig.business_id, phase: phaseName },
@@ -234,7 +275,6 @@ const handleIncomingMessage = async (req, res) => {
                                 recentChats.reverse();
                                 const conversationHistory = recentChats.map(c => `${c.sender_type === 'USER' ? 'User' : 'Assistant'}: ${c.message}`).join("\n");
 
-                                // 🔥 Python Logic 3: Generate Smart Answer (STRICT RULES & FALLBACK TO SUMMARY) 🔥
                                 const systemPrompt = `You are a highly professional, friendly, and helpful Customer Support AI Agent for an educational institute in Sri Lanka.
 Your ONLY source of truth is the [KNOWLEDGE BASE] and [STUDENT PROFILE] provided below.
 
@@ -276,7 +316,6 @@ Assistant:`;
                                     aiReplyText = aiReplyText.replace(/\*\*/g, '').replace(/\* /g, '- ').replace(/ \*/g, ' -');
                                 }
 
-                                // 8. Send Meta Reply
                                 let replyPayload = {
                                     messaging_product: "whatsapp",
                                     recipient_type: "individual",
@@ -287,7 +326,6 @@ Assistant:`;
 
                                 const metaResponse = await axios.post(`https://graph.facebook.com/v18.0/${metaPhoneId}/messages`, replyPayload, { headers: { Authorization: `Bearer ${crmConfig.meta_token}` }});
 
-                                // 9. Save Bot Message
                                 await prisma.chat_logs.create({
                                     data: { phone: senderPhone, sender_type: "AI_BOT", message: aiReplyText, is_read: true, wa_msg_id: metaResponse.data?.messages?.[0]?.id }
                                 });

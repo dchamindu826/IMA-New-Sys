@@ -228,15 +228,32 @@ const enrollWithSlip = async (req, res) => {
 
 const myPayments = async (req, res) => {
     try {
-        const user = req.user;
-        const oldPayments = await prisma.$queryRawUnsafe(`
-            SELECT p.id as paymentId, p.created_at as createdDate, p.amount as totalAmount, p.subjectAmount, p.status, p.isInstallment, p.linked, c.name as courseName, g.name as groupName 
-            FROM payments p JOIN courses c ON p.course_id = c.id JOIN \`groups\` g ON c.group_id = g.id
-            WHERE p.status != -2 AND p.student_id = ${user.id} AND p.linked IS NULL ORDER BY p.id DESC
+        const studentId = req.user.id;
+
+        // 1. ඔක්කොම Payments ගන්නවා (Linked ඒවත් එක්කම)
+        const allPayments = await prisma.$queryRawUnsafe(`
+            SELECT p.id as paymentId, p.created_at as createdDate, p.amount as totalAmount, 
+                   p.subjectAmount, p.status, p.isInstallment, p.linked, p.pType,
+                   c.name as courseName, g.name as groupName, b.logo as batchLogo, b.name as batchName
+            FROM payments p 
+            JOIN courses c ON p.course_id = c.id 
+            JOIN \`groups\` g ON c.group_id = g.id
+            JOIN batches b ON g.batch_id = b.id
+            WHERE p.status != -2 AND p.student_id = ${studentId}
+            ORDER BY p.id DESC
         `);
 
+        // 2. ප්‍රධාන Payments (Main) සහ අනුබද්ධ Payments (Linked) වෙන් කරගන්නවා
+        const mainPayments = allPayments.filter(p => p.linked === null);
+        const linkedPayments = allPayments.filter(p => p.linked !== null);
+
         let formatted = [];
-        for (let p of oldPayments) {
+
+        for (let p of mainPayments) {
+            // මේ Payment එකට අදාල Linked Courses හොයාගන්නවා
+            const relatedCourses = linkedPayments.filter(lp => lp.linked === parseInt(p.paymentId.toString()));
+            p.linkedPayments = relatedCourses; // Frontend එක බලාපොරොත්තු වෙන field එක
+
             if (p.isInstallment) {
                 const insts = await prisma.installments.findMany({
                     where: { payment_id: p.paymentId },
@@ -244,14 +261,12 @@ const myPayments = async (req, res) => {
                 });
                 
                 p.allInstallments = insts; 
-                
                 const activeInst = insts.find(i => i.status === -1 || i.status === 0);
                 
                 if (activeInst) {
                     p.amount = parseFloat(activeInst.amount); 
                     p.instStatus = activeInst.status; 
                     p.dueDate = activeInst.due_date;
-                    p.step = activeInst.step;
                     p.isFullyPaid = false;
                 } else {
                     p.amount = parseFloat(p.totalAmount);
@@ -265,8 +280,11 @@ const myPayments = async (req, res) => {
             formatted.push(p);
         }
 
-        return res.status(200).json(safeJson({ oldPayments: formatted }));
-    } catch (error) { return res.status(500).json({ message: error.message }); }
+        return res.status(200).json(safeJson({ oldPayments: formatted, installmentPayments: [] }));
+    } catch (error) { 
+        console.error("MyPayments Fetch Error:", error);
+        return res.status(500).json({ message: error.message }); 
+    }
 };
 
 const getPaymentsAdmin = async (req, res) => {

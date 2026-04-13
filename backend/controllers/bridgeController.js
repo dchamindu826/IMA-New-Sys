@@ -1,5 +1,3 @@
-// backend/controllers/bridgeController.js
-
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
@@ -8,53 +6,73 @@ const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeo
 
 const checkStudentLms = async (req, res) => {
     try {
-        let phone = req.params.phone;
+        let phoneRaw = req.params.phone;
+        const cleanPhone = phoneRaw.replace(/\D/g, '').slice(-9);
 
-        // 🔥 FIX: ෆෝන් නම්බර් එකේ තියෙන ඔක්කොම අකුරු/ලකුණු (Spaces, + , -) අයින් කරනවා 🔥
-        let cleanPhone = phone.replace(/\D/g, ''); 
+        if (!cleanPhone || cleanPhone.length !== 9) return res.status(200).json({ found: false });
 
-        // 🔥 FIX: අග තියෙන ඉලක්කම් 9 විතරක් ගන්නවා. (උදා: 714941559) 🔥
-        const last9Digits = cleanPhone.slice(-9);
+        const students = await prisma.users.findMany({
+            where: { role: 'user' } 
+        });
 
-        // නම්බර් එකෙන් ළමයව හොයනවා. (පොඩිම කෑල්ලෙන් හොයන නිසා කොහොම ලියලා තිබ්බත් අහුවෙනවා!)
-        const student = await prisma.users.findFirst({
-            where: { 
-                phone: { endsWith: last9Digits }, // EndsWith එකෙන් හොයනවා
-                role: 'user' 
-            }
+        const student = students.find(s => {
+            const dbPhone = (s.phone || '').replace(/\D/g, '');
+            return dbPhone.endsWith(cleanPhone);
         });
 
         if (!student) return res.status(200).json({ found: false });
 
-        // ළමයාගේ Courses සහ Payments ගන්නවා
         const courseUsers = await prisma.course_user.findMany({ where: { user_id: student.id } });
         const courseIds = courseUsers.map(c => c.course_id);
         
         const courses = await prisma.courses.findMany({
-            where: { id: { in: courseIds } },
-            include: { group: { include: { batch: { include: { business: true } } } } }
+            where: { id: { in: courseIds } }
         });
 
         const payments = await prisma.payments.findMany({
             where: { student_id: student.id, course_id: { in: courseIds } }
         });
 
-        const activeCourses = courses.map(c => {
+        const activeCourses = await Promise.all(courses.map(async (c) => {
             const payment = payments.find(p => p.course_id.toString() === c.id.toString());
+            
+            let batchName = "N/A";
+            let businessName = "N/A";
+            
+            try {
+                if (c.batch_id) {
+                    const batch = await prisma.batches.findUnique({ where: { id: c.batch_id } });
+                    if (batch) {
+                        batchName = batch.name;
+                        if (batch.business_id) {
+                            const biz = await prisma.businesses.findUnique({ where: { id: batch.business_id } });
+                            if (biz) businessName = biz.name;
+                        }
+                    }
+                }
+            } catch(e) {}
+
             return {
                 enrollment_id: c.id.toString(),
-                course_name: c.name,
-                batch_name: c.group?.batch?.name,
-                business_name: c.group?.batch?.business?.name,
-                course_price: c.price,
-                plan_type: payment && payment.isInstallment ? 2 : 1, // 1=Full, 2=Monthly
+                course_name: c.name || "Unknown Course",
+                batch_name: batchName,
+                business_name: businessName,
+                course_price: c.price || 0,
+                plan_type: payment && payment.isInstallment ? 2 : 1, 
                 current_discount: payment ? payment.free_amount : 0
             };
-        });
+        }));
 
         res.status(200).json(safeJson({ 
             found: true, 
-            student: { id: student.id, name: `${student.fName} ${student.lName}`, nic: student.nic, courses: activeCourses } 
+            student: { 
+                id: student.id, 
+                name: `${student.fName || ''} ${student.lName || ''}`.trim(), 
+                nic: student.nic, 
+                email: student.email,
+                phone: student.phone,
+                courses: activeCourses 
+            } 
         }));
     } catch (error) { 
         res.status(500).json({ error: error.message }); 

@@ -1,34 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import toast from 'react-hot-toast';
+import { User, BookOpen, Lock, Mail, Phone, AlertCircle, UserPlus, LogIn, X } from 'lucide-react';
+import api from '../../api/axios';
 
-export default function RightPanel({ activeLead, loggedInUser }) {
+export default function RightPanel({ selectedContact, loggedInUser }) {
   const [lmsData, setLmsData] = useState(null);
   const [lmsLoading, setLmsLoading] = useState(false);
-
-  // Forms State
   const [newPassword, setNewPassword] = useState('');
   const [updatingAuth, setUpdatingAuth] = useState(false);
-
-  // Discount States for Payment Update
-  const [discountAmounts, setDiscountAmounts] = useState({});
+  
+  const [iframeUrl, setIframeUrl] = useState(null);
 
   useEffect(() => {
     const fetchLmsData = async () => {
-      if (!activeLead || !activeLead.phone_number) return;
-      setLmsLoading(true); setLmsData(null);
+      const phoneRaw = selectedContact?.phoneNumber || selectedContact?.phone_number;
+      if (!phoneRaw) return;
+      
+      setLmsLoading(true); setLmsData(null); setIframeUrl(null);
       try {
-        const cleanPhone = activeLead.phone_number.replace(/\s+/g, '').replace('+', '');
-        const { data } = await axios.get(`http://72.62.249.211:5000/api/bridge/student/${cleanPhone}`);
+        const cleanPhone = phoneRaw.replace(/\D/g, '').slice(-9);
+        const { data } = await api.get(`/bridge/student/${cleanPhone}`);
         setLmsData(data);
       } catch (error) {
-        console.error("LMS Error", error);
+        console.error("LMS Sync Error", error);
       } finally {
         setLmsLoading(false);
       }
     };
-    fetchLmsData();
-  }, [activeLead]);
+
+    if (selectedContact) fetchLmsData();
+  }, [selectedContact]);
 
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
@@ -36,201 +37,141 @@ export default function RightPanel({ activeLead, loggedInUser }) {
     setUpdatingAuth(true);
     const toastId = toast.loading("Updating Password...");
     try {
-      await axios.post('http://72.62.249.211:5000/api/bridge/update-password', {
-        user_id: lmsData.student.id,
-        new_password: newPassword
-      });
+      await api.post('/bridge/update-password', { user_id: lmsData.student.id, new_password: newPassword });
       toast.success("Password Updated in LMS! ✅", { id: toastId });
       setNewPassword('');
     } catch (error) {
-      toast.error("Failed to update", { id: toastId });
+      toast.error(error.response?.data?.error || "Failed to update", { id: toastId });
     } finally {
       setUpdatingAuth(false);
     }
   };
 
-  const handleDiscountChange = (enrollmentId, value) => {
-    setDiscountAmounts({ ...discountAmounts, [enrollmentId]: value });
-  };
-
-  const handlePlanChange = async (enrollmentId, newPlan, currentPlan) => {
-    // Return back to current plan UI if it's the same
-    if (newPlan == currentPlan) return;
-
-    if (currentPlan == 1 && newPlan == 2) {
-       return toast.error("Cannot change from Full Payment back to Monthly! ❌");
-    }
-
-    if (newPlan == 1 && !window.confirm("Are you sure you want to change to Full Payment? This will delete all monthly records for this course!")) {
-        // Reset the select dropdown UI to what it was
-        const cleanPhone = activeLead.phone_number.replace(/\s+/g, '').replace('+', '');
-        const { data } = await axios.get(`http://72.62.249.211:5000/api/bridge/student/${cleanPhone}`);
-        setLmsData(data);
-        return;
-    }
-
-    const discountAmount = discountAmounts[enrollmentId] || 0;
-    const toastId = toast.loading("Updating Enrollment Plan & Processing Payments...");
-
+  const handleIframeGhostLogin = async () => {
+    if (!lmsData?.student?.id) return;
+    const toastId = toast.loading("Loading Student Dashboard...");
     try {
-      const response = await axios.post('http://72.62.249.211:5000/api/bridge/update-enrollment', {
-        enrollment_id: enrollmentId,
-        new_plan_type: newPlan,
-        discount_amount: discountAmount,
-        admin_user_id: loggedInUser?.id || 1 // Assuming 1 as fallback if loggedInUser not passed
-      });
-
-      if (response.data.success) {
-          toast.success(response.data.message || "Plan Updated Successfully! ✅", { id: toastId });
-          // Clear discount input
-          setDiscountAmounts({ ...discountAmounts, [enrollmentId]: '' });
-      } else {
-          toast.error(response.data.message || "Failed to update", { id: toastId });
-      }
-
-      // Reload Data
-      const cleanPhone = activeLead.phone_number.replace(/\s+/g, '').replace('+', '');
-      const { data } = await axios.get(`http://72.62.249.211:5000/api/bridge/student/${cleanPhone}`);
-      setLmsData(data);
-
+        // 🔥 FIX: Updated Backend route
+        const res = await api.post(`/admin/ghost-login/${lmsData.student.id}`);
+        setIframeUrl(`${window.location.origin}/student/dashboard?token=${res.data.token}&embedded=true`);
+        toast.success("Access Granted!", { id: toastId });
     } catch (error) {
-      toast.error(error.response?.data?.error || "Failed to update plan", { id: toastId });
-      // Reset UI on fail
-      const cleanPhone = activeLead.phone_number.replace(/\s+/g, '').replace('+', '');
-      const { data } = await axios.get(`http://72.62.249.211:5000/api/bridge/student/${cleanPhone}`);
-      setLmsData(data);
+        toast.error("Failed to Ghost Login.", { id: toastId });
     }
   };
+
+  if (iframeUrl) {
+      return (
+          <div className="w-[320px] lg:w-[400px] h-full flex flex-col bg-slate-900 border-l border-white/10 z-20 transition-all duration-300">
+              <div className="p-3 border-b border-white/10 bg-slate-800 flex justify-between items-center shrink-0">
+                  <h3 className="text-white text-sm font-bold flex items-center gap-2"><User size={16}/> Student View</h3>
+                  <button onClick={() => setIframeUrl(null)} className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white p-1.5 rounded-lg transition-colors"><X size={16}/></button>
+              </div>
+              <iframe src={iframeUrl} className="flex-1 w-full h-full border-none bg-slate-950" title="Student Dashboard" />
+          </div>
+      );
+  }
 
   return (
-    <div className="h-full flex flex-col gap-4">
-      <div className="bg-slate-400/10 border border-slate-400/20 rounded-3xl p-5 backdrop-blur-xl shadow-xl flex-1 flex flex-col overflow-hidden">
+    <div className="w-[320px] h-full flex flex-col bg-slate-900 border-l border-white/10 shrink-0 shadow-2xl z-20 transition-all duration-300">
+      
+      <div className="p-5 border-b border-white/10 bg-slate-800/50 flex justify-between items-center shrink-0">
+        <h3 className="text-white font-bold text-lg flex items-center gap-2">
+          <User className="text-blue-400"/> Student Profile
+        </h3>
         
-        <div className="flex justify-between items-center mb-4 border-b border-slate-500/30 pb-3">
-          <h3 className="text-white font-bold text-sm uppercase tracking-wider flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg>
-            Student Management
-          </h3>
-        </div>
-        
-        {activeLead ? (
-          <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-            {lmsLoading ? (
-              <div className="flex flex-col items-center justify-center mt-10">
-                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                <span className="text-blue-400 text-xs font-bold animate-pulse">Syncing with LMS...</span>
+        {lmsData && lmsData.found && (
+          <button onClick={handleIframeGhostLogin} className="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 px-3 py-1.5 rounded-xl transition-all shadow-lg flex items-center gap-2 text-xs font-bold" title="View Dashboard">
+             <LogIn size={14}/> Dashboard
+          </button>
+        )}
+      </div>
+      
+      {selectedContact ? (
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-5 bg-slate-900/80">
+          {lmsLoading ? (
+            <div className="flex flex-col items-center justify-center mt-20 opacity-70">
+              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <span className="text-blue-400 text-sm font-bold animate-pulse tracking-widest uppercase">Syncing LMS...</span>
+            </div>
+          ) : lmsData && lmsData.found ? (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+              
+              <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 p-5 rounded-2xl border border-white/10 shadow-lg relative overflow-hidden">
+                <div className="flex items-center gap-4 mb-4 relative z-10">
+                  <div className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white font-black text-2xl shadow-lg ring-4 ring-slate-900">
+                    {lmsData.student.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 className="text-white font-bold text-lg leading-tight">{lmsData.student.name}</h4>
+                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block mt-1 shadow-sm">
+                      Registered
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2 mt-4 pt-4 border-t border-white/5 relative z-10">
+                    <p className="text-xs text-slate-300 flex items-center gap-2"><Phone size={14} className="text-slate-500"/> {lmsData.student.phone || selectedContact.phoneNumber}</p>
+                    <p className="text-xs text-slate-300 flex items-center gap-2"><User size={14} className="text-slate-500"/> ID: #{lmsData.student.id} | NIC: {lmsData.student.nic || 'N/A'}</p>
+                </div>
               </div>
-            ) : lmsData && lmsData.found ? (
-              <div className="space-y-6 animate-fade-in-down">
-                
-                {/* 1. Student Profile Info */}
-                <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-600/50">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                      {lmsData.student.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h4 className="text-white font-bold text-md">{lmsData.student.name}</h4>
-                      <p className="text-gray-400 text-xs">LMS ID: #{lmsData.student.id} | NIC: {lmsData.student.nic}</p>
-                    </div>
-                  </div>
-                  <div className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 w-fit">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div> Active Account
-                  </div>
-                </div>
 
-                {/* 2. Login Credentials Manager */}
-                <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-600/50">
-                  <h5 className="text-gray-300 font-bold text-xs mb-3 uppercase tracking-wider">Account Credentials</h5>
-                  <form onSubmit={handleUpdatePassword} className="flex gap-2">
-                    <input 
-                      type="text" value={newPassword} onChange={e=>setNewPassword(e.target.value)} 
-                      placeholder="Enter new password" 
-                      className="flex-1 bg-slate-800 border border-slate-600 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500"
-                    />
-                    <button type="submit" disabled={updatingAuth} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50">
-                      Reset
-                    </button>
-                  </form>
-                </div>
+              <div className="bg-black/30 p-4 rounded-2xl border border-white/5 shadow-inner">
+                <h5 className="text-slate-400 font-bold text-xs mb-3 uppercase tracking-widest flex items-center gap-2"><Lock size={14} className="text-orange-400"/> Account Security</h5>
+                <form onSubmit={handleUpdatePassword} className="flex flex-col gap-2">
+                  <input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Type new password..." className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-sm outline-none focus:border-blue-500 transition-colors" />
+                  <button type="submit" disabled={updatingAuth} className="w-full bg-orange-600 hover:bg-orange-500 text-white py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shadow-lg">Reset Password</button>
+                </form>
+              </div>
 
-                {/* 3. Enrollments & Payment Plans */}
-                <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-600/50">
-                  <h5 className="text-gray-300 font-bold text-xs mb-3 uppercase tracking-wider">Active Enrollments</h5>
-                  <div className="space-y-4">
-                    {lmsData.student.courses.map((course, idx) => (
-                      <div key={idx} className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-md">
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
-                                <h6 className="text-blue-300 font-bold text-sm">{course.course_name}</h6>
-                                <p className="text-gray-400 text-[10px]">{course.batch_name} | {course.business_name}</p>
-                            </div>
-                            <span className="bg-slate-900 text-green-400 px-2 py-1 rounded border border-green-500/30 text-[10px] font-bold">
-                                Rs. {course.course_price}
-                            </span>
+              <div>
+                  <h5 className="text-slate-400 font-bold text-xs mb-3 uppercase tracking-widest flex items-center gap-2"><BookOpen size={14} className="text-purple-400"/> Active Enrollments</h5>
+                  <div className="space-y-3">
+                    {lmsData.student.courses?.map((course, idx) => (
+                      <div key={idx} className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 shadow-md">
+                        <div className="mb-3">
+                            <h6 className="text-blue-300 font-bold text-sm leading-tight">{course.course_name}</h6>
+                            <p className="text-slate-500 text-[10px] mt-0.5">{course.batch_name}</p>
                         </div>
-                        
-                        <div className="flex flex-col gap-2 pt-3 border-t border-slate-700/50 mt-2">
-                          
-                          {/* Payment Plan Dropdown */}
-                          <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-gray-400">Payment Plan:</span>
-                              <select 
-                                className={`text-xs font-bold px-3 py-1.5 rounded outline-none border transition-colors ${course.plan_type == 1 ? 'bg-green-900/30 text-green-400 border-green-500/50' : 'bg-slate-900 text-blue-300 border-slate-600'}`}
-                                value={course.plan_type}
-                                onChange={(e) => handlePlanChange(course.enrollment_id, e.target.value, course.plan_type)}
-                              >
-                                <option value="2">Monthly Installment</option>
-                                <option value="1">Full Payment</option>
-                              </select>
-                          </div>
-
-                          {/* Discount Input (Only show if currently Monthly, meaning they might upgrade to Full) */}
-                          {course.plan_type == 2 && (
-                              <div className="flex items-center justify-between bg-slate-900/50 p-2 rounded-lg border border-slate-700">
-                                  <span className="text-[10px] font-bold text-gray-500">Apply Discount (Rs):</span>
-                                  <input 
-                                    type="number"
-                                    className="w-24 bg-black text-white text-xs px-2 py-1 border border-slate-600 rounded outline-none text-right"
-                                    placeholder="0"
-                                    value={discountAmounts[course.enrollment_id] || ''}
-                                    onChange={(e) => handleDiscountChange(course.enrollment_id, e.target.value)}
-                                  />
-                              </div>
-                          )}
-
-                          {/* Display current discount if plan is Full */}
-                          {course.plan_type == 1 && course.current_discount > 0 && (
-                              <p className="text-[10px] text-right text-warning text-yellow-500">
-                                  * Discount Applied: Rs. {course.current_discount}
-                              </p>
-                          )}
-
+                        <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-700/50">
+                            <div className="bg-black/40 p-2 rounded-lg border border-white/5 flex flex-col items-center justify-center">
+                                <span className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Course Fee</span>
+                                <span className="text-xs text-white font-bold">Rs. {course.course_price}</span>
+                            </div>
+                            <div className="bg-black/40 p-2 rounded-lg border border-white/5 flex flex-col items-center justify-center">
+                                <span className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Plan Type</span>
+                                <span className={`text-xs font-bold ${course.plan_type === 1 ? 'text-emerald-400' : 'text-blue-400'}`}>
+                                    {course.plan_type === 1 ? 'Full Payment' : 'Monthly'}
+                                </span>
+                            </div>
                         </div>
                       </div>
                     ))}
-                    {lmsData.student.courses.length === 0 && <p className="text-gray-500 text-xs text-center py-2">No enrollments found.</p>}
+                    {(!lmsData.student.courses || lmsData.student.courses.length === 0) && (
+                        <div className="text-center p-6 border border-dashed border-slate-700 rounded-xl">
+                            <p className="text-slate-500 text-xs">No active enrollments found.</p>
+                        </div>
+                    )}
                   </div>
-                </div>
+              </div>
 
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6">
+              <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-4 border border-slate-700 shadow-inner">
+                  <AlertCircle size={32} className="text-slate-500" />
               </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-4">
-                <span className="text-6xl mb-4 grayscale opacity-30">🔍</span>
-                <h4 className="text-white font-bold text-lg">Not Registered</h4>
-                <p className="text-gray-500 text-xs mt-2">This WhatsApp number ({activeLead.phone_number}) is not linked to any student account in the LMS.</p>
-                <button className="mt-4 bg-slate-800 hover:bg-slate-700 text-blue-400 border border-slate-600 px-4 py-2 rounded-xl text-xs font-bold transition-all">
-                  Create New Student
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center">
-            <p className="text-gray-500 text-xs">Select a chat to manage student.</p>
-          </div>
-        )}
-      </div>
+              <h4 className="text-white font-bold text-lg mb-1">Not Registered</h4>
+              <p className="text-slate-400 text-xs mb-6 leading-relaxed">
+                  WhatsApp Number: {selectedContact.phoneNumber || selectedContact.phone_number} is not in the LMS.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center bg-slate-900/50 p-6 text-center">
+          <p className="text-slate-500 text-sm font-medium">Select a chat to view details.</p>
+        </div>
+      )}
     </div>
   );
 }

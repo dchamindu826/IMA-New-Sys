@@ -24,7 +24,9 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import PaymentHub from './pages/admin/PaymentHub';
 import StaffManager from './pages/admin/StaffManager';
 import BatchManager from './pages/admin/BatchManager';
-import AdminCrmSetup from './pages/admin/AdminCrmSetup'; // 🔥 මේක ආයෙත් ගෙනාවා (Admin Setup එක වෙනම තියෙන්න ඕනේ)
+import AdminCrmSetup from './pages/admin/AdminCrmSetup'; 
+import UserInbox from './components/crm/UserInbox';
+import StudentManager from './pages/admin/StudentManager';
 
 // --- Manager Pages ---
 import ManagerDashboard from './pages/manager/ManagerDashboard'; 
@@ -37,7 +39,7 @@ import ManagerPayments from './pages/manager/ManagerPayments';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import CoordinatorTasks from './pages/coordinator/CoordinatorTasks';
 
-// 🔥 NEW: CRM Pages (Unified) 🔥
+// --- CRM Pages ---
 import StaffCRM from "./pages/crm/StaffCRM";
 import ManagerCRM from "./pages/crm/ManagerCRM";
 
@@ -60,22 +62,19 @@ function App() {
   };
 
   const getDefaultDashboard = (role) => {
-      // role එකක් නැත්නම් හෝ වැරදි නම් loop නොවී Home එකට යවනවා
       if (!role) return "/"; 
       
-      // Admin කියන role එකත් මෙතනට මම එකතු කළා ආරක්ෂාවට
-      if(role === 'System Admin' || role === 'superadmin' || role === 'Director' || role === 'Admin') return "/admin/dashboard";
-      if(role === 'Manager' || role === 'Ass Manager') return "/manager/dashboard";
-      if(role === 'Coordinator' || role === 'Staff') return "/coordinator/dashboard";
+      const r = role.toLowerCase().trim();
+      if(r === 'system admin' || r === 'superadmin' || r === 'director' || r === 'admin') return "/admin/dashboard";
+      if(r === 'manager' || r === 'ass manager') return "/manager/dashboard";
+      if(r === 'coordinator' || r === 'staff' || r === 'agent') return "/coordinator/dashboard";
       
-      // 🔥 FIX: Finance අයගේ route එක /admin/payments වෙන්න ඕනේ 🔥
-      if(role === 'Finance') return "/admin/payments"; 
+      if(r === 'finance') return "/admin/payments"; 
+      if(r === 'user' || r === 'student') return "/student/dashboard"; 
       
-      if(role === 'user' || role === 'student') return "/student/dashboard"; 
-      
-      // මැච් වෙන කිසිම role එකක් නැත්නම් /login වලට යවලා loop වෙනවා වෙනුවට Home (/) එකට යවනවා
       return "/"; 
   };
+  
   if (loading) return <div className="min-h-screen bg-[#0A0F1C] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
 
   return (
@@ -100,8 +99,10 @@ function App() {
           <Route path="admin/batches/:businessId" element={<BatchManager />} />
           <Route path="admin/content-hub" element={<ContentHub />} />
           <Route path="admin/coordinator-tasks" element={<CoordinatorTasks />} />
+          <Route path="admin/student-manager" element={<StudentManager loggedInUser={loggedInUser} />} />
           
-          {/* 🔥 FIX: AdminCrmSetup එක Sidebar එකේ ලින්ක් එකට මැච් වෙන්න දැම්මා 🔥 */}
+          {/* Admin CRM Tools */}
+          <Route path="admin/staff-crm" element={<ManagerCRM loggedInUser={loggedInUser} />} />
           <Route path="admin/crm-setup" element={<AdminCrmSetup />} />
 
           <Route path="manager/dashboard" element={<ManagerDashboard />} />
@@ -110,14 +111,15 @@ function App() {
           <Route path="manager/staff" element={<ManagerStaff />} />
           <Route path="manager/content-hub" element={<ContentHub />} />
           <Route path="manager/payments" element={<ManagerPayments />} />
+          <Route path="manager/crm" element={<ManagerCRM loggedInUser={loggedInUser} />} />
 
           <Route path="coordinator/dashboard" element={<CoordinatorDashboard />} />
           <Route path="coordinator/my-tasks" element={<CoordinatorTasks />} />
           <Route path="coordinator/content-hub" element={<ContentHub />} />
 
-          {/* 🔥 FIX: Sidebar එකේ ලින්ක්ස් වලට හරියන්න CRM Routes හැදුවා 🔥 */}
-          <Route path="manager/crm" element={<ManagerCRM loggedInUser={loggedInUser} />} />
+          {/* Staff CRM Routes */}
           <Route path="staff/crm" element={<StaffCRM loggedInUser={loggedInUser} />} />
+          <Route path="coordinator/crm" element={<StaffCRM loggedInUser={loggedInUser} />} />
 
         </Route>
 

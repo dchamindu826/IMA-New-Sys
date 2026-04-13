@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Layers, Users, RefreshCw } from 'lucide-react';
+import { Layers, Users, RefreshCw, X, Upload } from 'lucide-react';
 import { API_BASE_URL } from "../../config";
 import ContactSidebar from "./ContactSidebar";
 import ChatArea from "./ChatArea";
 import CampaignSidebar from "./RightPanel"; 
 import ChatModals from "./ChatModals"; 
+import ManagerAssignModal from "./ManagerAssignModal";
+import toast from 'react-hot-toast';
+import api from '../../api/axios'; 
 
 const getToken = () => localStorage.getItem('token') || localStorage.getItem('userToken') || localStorage.getItem('jwt');
 
-export default function UserInbox({ isEmbedded = false, initialSelectedContact = null, activePhase = 'FREE', selectedBiz = null }) {
+export default function UserInbox({ isEmbedded = false, initialSelectedContact = null, activePhase = 'FREE', selectedBiz = null, loggedInUser = null }) {
   const [contacts, setContacts] = useState([]);
-  const [agents, setAgents] = useState([]);
+  const [staff, setStaff] = useState([]); 
   const [messages, setMessages] = useState([]);
   const [selectedContact, setSelectedContact] = useState(null);
   
@@ -24,48 +27,54 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
       return { bg: 'bg-slate-900/60 backdrop-blur-xl', bubbleMe: 'bg-blue-600 text-white border-none shadow-lg shadow-blue-500/20', bubbleThem: 'bg-slate-800 text-gray-200 border-white/5 shadow-md', header: 'bg-black/40 border-white/5', text: 'text-white', subText: 'text-slate-400', icon: 'text-slate-400 hover:text-white hover:bg-white/10', inputBg: 'bg-black/40 border border-white/5 text-white shadow-inner', patternUrl: null };
   }, [theme]);
 
-  // 🔥 Assignment Filters 🔥
-  const [activeTab, setActiveTab] = useState('All'); 
+  const [activeTab, setActiveTab] = useState('New');
   const [searchTerm, setSearchTerm] = useState('');
+  
   const [selectedAgentFilter, setSelectedAgentFilter] = useState('All');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState('All'); // Pending, Reject etc.
-  const [isAssignMode, setIsAssignMode] = useState(false);
-  const [selectedForAssign, setSelectedForAssign] = useState([]);
+  const [selectedPhaseFilter, setSelectedPhaseFilter] = useState('All');
 
   const [showLeadDetails, setShowLeadDetails] = useState(true);
+
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importForm, setImportForm] = useState({ name: '', phone: '' });
+  const [isAssignMode, setIsAssignMode] = useState(false);
+  const [selectedForAssign, setSelectedForAssign] = useState([]);
 
   const [batches, setBatches] = useState([]);
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('All');
 
   const [drafts, setDrafts] = useState({});
-  const newMessage = selectedContact && drafts[selectedContact?._id || selectedContact?.id] !== undefined ? drafts[selectedContact?._id || selectedContact?.id] : "";
-  const setNewMessage = (val) => { if (selectedContact) setDrafts(prev => ({ ...prev, [selectedContact._id || selectedContact.id]: val })); };
-  
   const [sending, setSending] = useState(false);
   const [mediaPreview, setMediaPreview] = useState(null); 
   const [uploading, setUploading] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
 
+  // 🔥 FIX: newMessage variable strictly defined here 🔥
+  const newMessage = selectedContact && drafts[selectedContact?._id || selectedContact?.id] !== undefined ? drafts[selectedContact?._id || selectedContact?.id] : "";
+  const setNewMessage = (val) => { 
+      if (selectedContact) setDrafts(prev => ({ ...prev, [selectedContact._id || selectedContact.id]: val })); 
+  };
+
   const [showTemplates, setShowTemplates] = useState(false);
-  const [suggestedReplies, setSuggestedReplies] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [newTemplateTitle, setNewTemplateTitle] = useState('');
   const [newTemplateMsg, setNewTemplateMsg] = useState('');
-  const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
-  const [templateMediaPreview, setTemplateMediaPreview] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
 
   const [showSendTemplateModal, setShowSendTemplateModal] = useState(false);
-  const [approvedTemplates, setApprovedTemplates] = useState([]);
+  const [approvedTemplates, setApprovedTemplates] = useState([]); 
 
   const activeContactRef = useRef(null);
   const scrollRef = useRef(); 
 
-  const userRole = (localStorage.getItem('role') || '').toLowerCase(); 
-  const userName = localStorage.getItem('name') || 'Agent'; 
-  const userId = localStorage.getItem('id') || localStorage.getItem('userId');
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const currentUser = loggedInUser || storedUser;
+  const userRole = (currentUser.role || '').toLowerCase().trim(); 
+  const userName = currentUser.fName || currentUser.name || 'Agent'; 
+  const userId = currentUser.id || localStorage.getItem('id');
 
   const loadData = useCallback(async () => {
       try {
@@ -73,7 +82,7 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
           if (!t) return;
           const headers = { 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` };
 
-          const [conRes, agentRes] = await Promise.all([
+          const [conRes, staffRes] = await Promise.all([
               fetch(`${API_BASE_URL}/api/crm/contacts`, { headers }),
               fetch(`${API_BASE_URL}/api/team/agents`, { headers }) 
           ]);
@@ -82,13 +91,13 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
               const data = await conRes.json();
               setContacts(Array.isArray(data) ? data : []);
           }
-          if(agentRes.ok) {
-              const data = await agentRes.json();
-              setAgents(Array.isArray(data) ? data : []);
+          if(staffRes.ok) {
+              const data = await staffRes.json();
+              setStaff(Array.isArray(data) ? data : []);
           }
       } catch(err) { console.error("Error loading data:", err); }
   }, []);
-  
+
   useEffect(() => {
       const t = getToken();
       if (selectedBiz && selectedBiz.id && t) {
@@ -187,60 +196,9 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
       } catch(err) { console.error(err); } finally { setSending(false); }
   };
 
-  // 🔥 Contact Filter Logic (Includes Status & Agent Filters) 🔥
-  const filteredContacts = useMemo(() => {
-    return contacts
-      .filter(c => {
-        if (selectedBiz && selectedBiz.id && c.owner_id && String(c.owner_id) !== String(selectedBiz.id)) return false;
-        if (activePhase === 'FREE' && selectedBatchFilter !== 'All' && c.batch_id && String(c.batch_id) !== String(selectedBatchFilter)) return false;
-
-        // Role Base Filtering 
-        if (userRole === 'staff' || userRole === 'agent' || userRole === 'coordinator') {
-             if (String(c.assigned_to) !== String(userId) && String(c.assignedTo) !== String(userId)) return false;
-        }
-
-        // Agent Filter (For Managers)
-        if (selectedAgentFilter !== 'All') {
-            if (String(c.assigned_to) !== String(selectedAgentFilter) && String(c.assignedTo) !== String(selectedAgentFilter)) return false;
-        }
-
-        // Status Filter
-        if (selectedStatusFilter !== 'All') {
-            if (String(c.status) !== String(selectedStatusFilter) && String(c.callStatus) !== String(selectedStatusFilter)) return false;
-        }
-
-        const contactPhone = c.phoneNumber || c.phone_number || "";
-        if (searchTerm && !contactPhone.includes(searchTerm)) return false;
-        
-        const isAssigned = !!(c.assignedTo || c.assigned_to);
-        if (activeTab === 'New Chat' && isAssigned) return false;
-        if (activeTab === 'Assigned' && !isAssigned) return false;
-        return true;
-      })
-      .sort((a, b) => {
-          const aUnread = (a.unreadCount || a.unread_count) > 0 ? 1 : 0;
-          const bUnread = (b.unreadCount || b.unread_count) > 0 ? 1 : 0;
-          if (aUnread !== bUnread) return bUnread - aUnread; 
-          return new Date(b.lastMessageTime || b.last_message_time || 0) - new Date(a.lastMessageTime || a.last_message_time || 0);
-      });
-  }, [contacts, searchTerm, activeTab, activePhase, selectedBiz, selectedBatchFilter, userRole, userId, selectedAgentFilter, selectedStatusFilter]);
-
-  // 🔥 Assignment Functions 🔥
-  const handleBulkAssign = async (qty, agentId) => {
-      try {
-          const t = getToken();
-          await fetch(`${API_BASE_URL}/api/crm/leads/bulk-assign`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` },
-              body: JSON.stringify({ batch_id: selectedBatchFilter, staff_id: agentId, qty: qty, order: 'asc' })
-          });
-          loadData();
-          alert("Successfully Assigned!");
-      } catch (e) { alert("Failed to assign"); }
-  };
-
   const handleSelectedAssign = async (agentId) => {
-      if (selectedForAssign.length === 0) return alert("Select contacts first");
+      if (selectedForAssign.length === 0) return toast.error("Select contacts first");
+      const toastId = toast.loading("Assigning to staff...");
       try {
           const t = getToken();
           await fetch(`${API_BASE_URL}/api/crm/assign-chats`, {
@@ -251,112 +209,161 @@ export default function UserInbox({ isEmbedded = false, initialSelectedContact =
           setSelectedForAssign([]);
           setIsAssignMode(false);
           loadData();
-          alert("Successfully Assigned Selected!");
-      } catch (e) { alert("Failed to assign"); }
+          toast.success("Successfully Assigned!", { id: toastId });
+      } catch (e) { toast.error("Failed to assign", { id: toastId }); }
   };
 
-  const handleResetAssignments = async () => {
-      if (!window.confirm("Are you sure you want to reset all assignments for this batch?")) return;
-      try {
-          const t = getToken();
-          await fetch(`${API_BASE_URL}/api/crm/reset-assignments`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}`, 'token': `Bearer ${t}` },
-              body: JSON.stringify({ batch_id: selectedBatchFilter })
-          });
-          loadData();
-          alert("Assignments Reset!");
-      } catch (e) { alert("Failed to reset"); }
-  };
+  const filteredContacts = useMemo(() => {
+    if (!contacts || !Array.isArray(contacts)) return [];
 
-  // Dummy functions to prevent crashes
-  const fetchApprovedTemplates = async () => {};
-  const handleSendTemplateMessage = async (t) => { setShowSendTemplateModal(false); };
-  const fetchQuickReplies = () => {};
-  const handleSelectAutoSuggest = (t) => { setNewMessage(t.message); setShowTemplates(false); };
-  const handleSelectTemplate = (t) => { setNewMessage(t.message); setShowTemplates(false); };
-  const handleTemplateMediaUpload = (e) => {};
-  const handleCreateQuickReply = () => {};
-  const handleDeleteQuickReply = (id) => {};
-  const handleTyping = (e) => { 
-      setNewMessage(e.target.value); 
-      if (e.target.value.endsWith('/')) setShowTemplates(true);
-      else if (e.target.value.trim() === '') setShowTemplates(false);
-  };
-  const handleFileUpload = (e) => {};
-  const startRecording = () => {};
-  const stopRecording = () => {};
-  const cancelRecording = () => {};
-  const formatTime = (time) => "00:00";
+    return contacts
+      .filter(c => {
+        if (selectedBiz && selectedBiz.id && String(c.owner_id || c.ownerId) !== String(selectedBiz.id)) return false;
+
+        if (['staff', 'agent', 'coordinator'].includes(userRole)) {
+             if (String(c.assigned_to) !== String(userId) && String(c.assignedTo) !== String(userId)) return false;
+        }
+
+        const contactPhone = c.phoneNumber || c.phone_number || "";
+        const contactName = c.name || c.customer_name || "";
+        
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            if (!contactPhone.includes(term) && !contactName.toLowerCase().includes(term)) return false;
+        }
+
+        const isAssigned = !!(c.assignedTo || c.assigned_to);
+        const cStatus = c.status || "";
+        const lastMsgStr = (c.lastMessage || c.last_message || "").toLowerCase();
+        const isImported = cStatus === 'Imported' || lastMsgStr.includes("imported");
+
+        if (activeTab === 'All') return true;
+
+        if (activeTab === 'New') {
+            if (isAssigned || isImported) return false; 
+        }
+        if (activeTab === 'Assigned') {
+            if (!isAssigned) return false;
+            if (selectedAgentFilter !== 'All' && String(c.assignedTo || c.assigned_to) !== String(selectedAgentFilter)) return false;
+            if (selectedPhaseFilter !== 'All' && String(c.status || c.phase) !== `PHASE_${selectedPhaseFilter}`) return false;
+        }
+        if (activeTab === 'Import') {
+            if (!isImported || isAssigned) return false;
+        }
+        
+        return true;
+      })
+      .sort((a, b) => {
+          const aUnread = (a.unreadCount || a.unread_count) > 0 ? 1 : 0;
+          const bUnread = (b.unreadCount || b.unread_count) > 0 ? 1 : 0;
+          if (aUnread !== bUnread) return bUnread - aUnread; 
+          
+          return new Date(b.lastMessageTime || b.last_message_time || b.updated_at || b.created_at || 0) - new Date(a.lastMessageTime || a.last_message_time || a.updated_at || a.created_at || 0);
+      });
+  }, [contacts, searchTerm, activeTab, selectedBiz, userRole, userId, selectedAgentFilter, selectedPhaseFilter]);
 
   const stateProps = {
-    contacts, agents, messages, selectedContact, setSelectedContact,
-    isDarkMode, fontIndex, theme, setTheme, currentTheme, activePhase, batches, selectedBatchFilter, setSelectedBatchFilter,
+    contacts, staff, messages, selectedContact, setSelectedContact,
+    isDarkMode, fontIndex, theme, setTheme, currentTheme, activePhase,
     activeTab, setActiveTab, searchTerm, setSearchTerm, showLeadDetails, setShowLeadDetails,
     newMessage, setNewMessage, sending, mediaPreview, setMediaPreview, uploading, setUploading,
     replyingTo, setReplyingTo, handleSendMessage, filteredContacts, userRole, userId,
     showTemplates, setShowTemplates, templates, setTemplates, isCreatingTemplate, setIsCreatingTemplate,
     newTemplateTitle, setNewTemplateTitle, newTemplateMsg, setNewTemplateMsg,
     isRecording, setIsRecording, recordingTime, setRecordingTime, scrollRef,
-    selectedAgentFilter, setSelectedAgentFilter, selectedStatusFilter, setSelectedStatusFilter,
-    isAssignMode, setIsAssignMode, selectedForAssign, setSelectedForAssign, handleBulkAssign, handleSelectedAssign, handleResetAssignments,
-    loggedInUser: { id: userId, role: userRole } // For RightPanel
+    selectedAgentFilter, setSelectedAgentFilter, selectedPhaseFilter, setSelectedPhaseFilter,
+    isAssignMode, setIsAssignMode, selectedForAssign, setSelectedForAssign, handleSelectedAssign,
+    loggedInUser: currentUser, fetchContacts: loadData,
+    setShowAssignModal, setShowImportModal, showSendTemplateModal, setShowSendTemplateModal,
+    approvedTemplates 
   };
 
   return (
-      <div className="flex flex-col w-full h-full gap-4 relative">
-          
-          {/* Top Bar for Manager Actions */}
-          {(userRole === 'admin' || userRole === 'manager' || userRole === 'superadmin') && (
-              <div className="flex justify-between items-center px-4 py-2 shrink-0 animate-in fade-in bg-slate-900/60 border border-white/5 rounded-2xl backdrop-blur-md shadow-lg z-40">
-                  <div className="flex items-center gap-4">
-                      {activePhase === 'FREE' && (
-                          <div className="flex items-center gap-2">
-                              <Layers size={16} className="text-blue-400" />
-                              <select value={selectedBatchFilter} onChange={(e) => setSelectedBatchFilter(e.target.value)} className="bg-transparent text-white font-bold outline-none text-sm cursor-pointer border-b border-white/20 pb-1">
-                                  <option value="All" className="bg-slate-900">🌍 All Batches</option>
-                                  {batches.map(b => (
-                                      <option key={b.id} value={b.id} className="bg-slate-900">{b.name}</option>
-                                  ))}
-                              </select>
-                          </div>
-                      )}
-                      
-                      <div className="flex items-center gap-2">
-                          <Users size={16} className="text-emerald-400" />
-                          <select value={selectedAgentFilter} onChange={(e) => setSelectedAgentFilter(e.target.value)} className="bg-transparent text-white font-bold outline-none text-sm cursor-pointer border-b border-white/20 pb-1">
-                              <option value="All" className="bg-slate-900">All Agents</option>
-                              {agents.map(a => (
-                                  <option key={a.id} value={a.id} className="bg-slate-900">{a.first_name || a.name}</option>
-                              ))}
-                          </select>
-                      </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                      {isAssignMode ? (
-                          <div className="flex items-center gap-2 bg-blue-500/20 px-3 py-1 rounded-lg border border-blue-500/30">
-                              <span className="text-xs font-bold text-blue-300">{selectedForAssign.length} Selected</span>
-                              <select className="bg-slate-900 text-white text-xs p-1 rounded outline-none border border-white/10" onChange={(e) => { if(e.target.value) handleSelectedAssign(e.target.value); }}>
-                                  <option value="">Assign To...</option>
-                                  {agents.map(a => (<option key={a.id} value={a.id}>{a.first_name || a.name}</option>))}
-                              </select>
-                              <button onClick={() => { setIsAssignMode(false); setSelectedForAssign([]); }} className="text-xs text-red-400 hover:text-red-300 ml-2">Cancel</button>
-                          </div>
-                      ) : (
-                          <button onClick={() => setIsAssignMode(true)} className="text-xs font-bold px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition border border-white/10 text-slate-300">Select & Assign</button>
-                      )}
-                      <button onClick={handleResetAssignments} className="text-xs font-bold px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition border border-red-500/20 flex items-center gap-1" title="Reset All Assignments in Batch"><RefreshCw size={12}/> Reset</button>
-                  </div>
-              </div>
-          )}
-
-          {/* MAIN CRM LAYOUT */}
-          <div className="flex w-full flex-1 rounded-3xl overflow-hidden shadow-2xl relative transition-all border bg-slate-900/40 border-white/10 backdrop-blur-md">
+      <div className="flex flex-col w-full h-full relative">
+          <div className="flex w-full h-full rounded-3xl overflow-hidden shadow-2xl relative transition-all border bg-slate-900/40 border-white/10 backdrop-blur-md">
             <ContactSidebar {...stateProps} />
             <ChatArea {...stateProps} />
             {showLeadDetails && <CampaignSidebar {...stateProps} />}
             <ChatModals {...stateProps} />
+            
+            {/* IMPORT MODAL */}
+            {showImportModal && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
+                        <button onClick={() => setShowImportModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><Upload className="text-emerald-400"/> Import Contacts</h3>
+                        
+                        <form onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (!importForm.phone) return toast.error("Phone number is required!");
+                            try {
+                                await api.post('/crm/contact/add', { name: importForm.name || 'Guest', phoneNumber: importForm.phone });
+                                toast.success("Contact Imported Successfully!");
+                                setImportForm({ name: '', phone: '' });
+                                setShowImportModal(false);
+                                loadData();
+                            } catch (error) { toast.error("Failed to import contact."); }
+                        }} className="space-y-4 mb-6">
+                            <div><label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-2">Name (Optional)</label><input type="text" placeholder="e.g. Nimal" value={importForm.name} onChange={e => setImportForm({...importForm, name: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500" /></div>
+                            <div><label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-2">Phone Number *</label><input type="text" required placeholder="e.g. 94714941559" value={importForm.phone} onChange={e => setImportForm({...importForm, phone: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500" /></div>
+                            <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg">Save Single Contact</button>
+                        </form>
+
+                        <div className="relative flex items-center py-4">
+                            <div className="flex-grow border-t border-white/10"></div>
+                            <span className="flex-shrink-0 mx-4 text-slate-500 text-xs font-bold">OR BULK IMPORT</span>
+                            <div className="flex-grow border-t border-white/10"></div>
+                        </div>
+
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-emerald-500/50 hover:border-emerald-400 hover:bg-emerald-500/10 rounded-xl cursor-pointer transition-colors group">
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <Upload className="w-8 h-8 text-emerald-400 mb-3 group-hover:scale-110 transition-transform" />
+                                <p className="mb-2 text-sm text-slate-300 font-bold"><span className="font-semibold">Click to upload</span> CSV file</p>
+                                <p className="text-xs text-slate-500">Format: Phone, Name</p>
+                            </div>
+                            <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+                                const file = e.target.files[0];
+                                if (!file) return;
+                                const toastId = toast.loading("Reading CSV file...");
+                                const reader = new FileReader();
+                                reader.onload = async (event) => {
+                                    const text = event.target.result;
+                                    const lines = text.split('\n');
+                                    const contactsToImport = [];
+                                    for (let i = 0; i < lines.length; i++) {
+                                        const line = lines[i].trim();
+                                        if (!line) continue;
+                                        const parts = line.split(',');
+                                        const phone = parts[0]?.trim();
+                                        const name = parts[1]?.trim() || '';
+                                        if (phone && phone.length >= 9) {
+                                            contactsToImport.push({ phoneNumber: phone, name: name });
+                                        }
+                                    }
+                                    if (contactsToImport.length === 0) return toast.error("No valid contacts found", { id: toastId });
+                                    try {
+                                        toast.loading(`Importing ${contactsToImport.length} contacts...`, { id: toastId });
+                                        await api.post('/crm/contact/bulk-add', { contacts: contactsToImport });
+                                        toast.success(`${contactsToImport.length} Contacts Imported!`, { id: toastId });
+                                        setShowImportModal(false);
+                                        loadData();
+                                    } catch (error) { toast.error("Bulk import failed.", { id: toastId }); }
+                                    e.target.value = null; 
+                                };
+                                reader.readAsText(file);
+                            }} />
+                        </label>
+                    </div>
+                </div>
+            )}
+
+            {/* 🔥 MANAGER ASSIGN MODAL (PORTAL FIX) 🔥 */}
+            {showAssignModal && (
+               <ManagerAssignModal 
+                  onClose={() => setShowAssignModal(false)} 
+                  selectedBatch={"All"} 
+               />
+            )}
           </div>
       </div>
   );

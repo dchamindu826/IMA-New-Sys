@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, CheckCircle2, Clock, Lock, UploadCloud, Link as LinkIcon, AlertTriangle, FileText, X, FolderOpen, GripVertical, MonitorPlay, ExternalLink, Ban, BookOpen, Plus, FolderPlus, Building2, Filter } from 'lucide-react'; // 🔥 Added Building2, Filter, FolderPlus 🔥
+import { Loader2, CheckCircle2, Clock, Lock, UploadCloud, ExternalLink, Ban, BookOpen, Plus, FolderPlus, Building2, Filter, X, MonitorPlay, FolderOpen, AlertTriangle, Unlock, FileUp } from 'lucide-react';
 import api from '../../api/axios'; 
 
 export default function CoordinatorTasks() {
@@ -10,7 +10,6 @@ export default function CoordinatorTasks() {
   const loggedInUser = JSON.parse(localStorage.getItem('user'));
   const isAdmin = ['System Admin', 'Director', 'Admin'].includes(loggedInUser?.role);
   
-  // 🔥 Re-added Filters 🔥
   const [businesses, setBusinesses] = useState([]);
   const [selectedBusiness, setSelectedBusiness] = useState('all'); 
   const [allBatches, setAllBatches] = useState([]); 
@@ -20,6 +19,7 @@ export default function CoordinatorTasks() {
   const [selectedStaff, setSelectedStaff] = useState('all');
 
   const [newFolderModal, setNewFolderModal] = useState({ isOpen: false, title: '', order: 1 });
+  const [unlockModal, setUnlockModal] = useState({ isOpen: false, taskId: null, reason: '' });
 
   const [hubModal, setHubModal] = useState({
       isOpen: false,
@@ -31,6 +31,7 @@ export default function CoordinatorTasks() {
       noChanges: false,
       courseCodeCache: null,
       courseIdCache: null,
+      isCustomTask: false, // 🔥 අලුතෙන් add කරපු state එක
       form: { 
           title: '', type: 1, contentGroupId: '', link: '', file: null, 
           zoomMeetingId: '', startTime: '', endTime: '', isFree: false,
@@ -105,15 +106,31 @@ export default function CoordinatorTasks() {
       return url; 
   };
 
+  const handleRequestUnlock = async (e) => {
+      e.preventDefault();
+      if (!unlockModal.reason.trim()) return toast.error("Reason is required!");
+      try {
+          await api.post('/tasks/request-unlock', { task_id: unlockModal.taskId, reason: unlockModal.reason });
+          toast.success("Unlock request sent to Manager!");
+          setUnlockModal({ isOpen: false, taskId: null, reason: '' });
+          fetchMyTasks();
+      } catch (error) {
+          toast.error("Failed to send request.");
+      }
+  };
+
   const openTaskHub = async (task) => {
-      setHubModal(prev => ({ ...prev, isOpen: true, task, loading: true, noChanges: false, matchingCourses: [] }));
+      // 🔥 Custom Task එකක්ද කියලා Check කරනවා 🔥
+      const standardTypes = ['live', 'recording', 'document', 'sPaper', 'paper'];
+      const isCustomTask = !standardTypes.includes(task.task_type);
+
+      setHubModal(prev => ({ ...prev, isOpen: true, task, loading: true, noChanges: false, matchingCourses: [], isCustomTask }));
 
       let subjectName = task.description;
       const match = task.description.match(/\]\s(.*?)\s-/);
       if (match) subjectName = match[1].trim();
       else subjectName = task.description.split('-')[0].replace(/\[.*?\]/, '').trim();
 
-      // Admin uses filteredBatches, staff might not have it loaded like that, so fallback
       const batchListToUse = isAdmin ? filteredBatches : allBatches.length > 0 ? allBatches : await api.get('/admin/manager/batches-full').then(r=>r.data).catch(()=>[]);
       
       const batch = batchListToUse.find(b => String(b.id) === String(task.batch_id));
@@ -121,7 +138,7 @@ export default function CoordinatorTasks() {
       let firstCourseCode = null;
       let firstCourseId = null;
       
-      if (batch && batch.groups) {
+      if (!isCustomTask && batch && batch.groups) { // Custom task එකකට Course check කරන්න ඕනේ නෑ
           batch.groups.forEach(g => {
               const c = g.courses?.find(c => c.name.toLowerCase().includes(subjectName.toLowerCase()) || subjectName.toLowerCase().includes(c.name.toLowerCase()));
               if (c) {
@@ -156,7 +173,8 @@ export default function CoordinatorTasks() {
           }
       }));
 
-      if (firstCourseId) {
+      // Custom task එකක් නෙමේ නම් විතරක් කලින් Contents fetch කරනවා
+      if (!isCustomTask && firstCourseId) {
           try {
               const res = await api.get(`/admin/manager/get-contents?batchId=${task.batch_id}&courseCode=${firstCourseCode}&courseId=${firstCourseId}`);
               setHubModal(prev => ({ ...prev, contents: res.data?.contents || [], folders: res.data?.lessonGroups || [] }));
@@ -204,14 +222,14 @@ export default function CoordinatorTasks() {
   const handleHubSubmit = async (e) => {
     e.preventDefault();
 
-    if (!hubModal.noChanges) {
+    if (!hubModal.noChanges && !hubModal.isCustomTask) {
         if (hubModal.form.type === 1 || hubModal.form.type === 2) {
             if (!hubModal.form.link) return toast.error("Please enter a valid link!");
         }
         if (hubModal.form.type === 3 || hubModal.form.type === 4 || hubModal.form.type === 5) {
             if (!hubModal.form.file) return toast.error("Please select a file to upload!");
         }
-        if (hubModal.form.selectedCourses.length === 0) {
+        if (hubModal.matchingCourses.length > 0 && hubModal.form.selectedCourses.length === 0) {
             return toast.error("Please select at least one group to assign this content!");
         }
     }
@@ -220,7 +238,10 @@ export default function CoordinatorTasks() {
     formData.append('task_id', hubModal.task.id);
     formData.append('noChanges', hubModal.noChanges);
     
-    if (!hubModal.noChanges) {
+    // Custom task එකක් නම් File එකක් විතරයි යවන්නේ (Title එක auto gannawa backend එකෙන්)
+    if (hubModal.isCustomTask) {
+        if (hubModal.form.file) formData.append('file', hubModal.form.file);
+    } else if (!hubModal.noChanges) {
         formData.append('contentTitle', hubModal.form.title);
         formData.append('contentType', hubModal.form.type);
         formData.append('zoomMeetingId', hubModal.form.zoomMeetingId);
@@ -238,7 +259,7 @@ export default function CoordinatorTasks() {
 
     try {
       await api.post('/tasks/complete', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      toast.success("Task Content Sent to Manager for Approval!");
+      toast.success("Task Completed & Sent to Manager for Approval!");
       setHubModal(prev => ({...prev, isOpen: false, task: null}));
       fetchMyTasks(); 
     } catch (error) { toast.error("Failed to submit task."); }
@@ -255,7 +276,7 @@ export default function CoordinatorTasks() {
           <p className="text-base text-slate-400 mt-2 font-medium">Manage and publish content for your assigned schedules.</p>
         </div>
         
-        {/* 🔥 ADMIN FILTERS 🔥 */}
+        {/* ADMIN FILTERS */}
         {isAdmin && (
             <div className="flex flex-wrap gap-4 items-center">
                 <div className="bg-slate-800/40 border border-white/10 p-3 rounded-2xl flex flex-col shadow-lg">
@@ -288,23 +309,35 @@ export default function CoordinatorTasks() {
           <div className="col-span-full py-24 text-center bg-slate-800/40 rounded-3xl border border-white/5"><CheckCircle2 size={64} className="mx-auto mb-6 text-emerald-500/50" /><h3 className="text-2xl font-bold text-slate-300">No tasks assigned.</h3></div>
         ) : (
           tasks.map(task => {
-            const isLocked = task.is_locked;
+            
+            const dateStr = task.deadline_date ? task.deadline_date.split('T')[0] : new Date().toISOString().split('T')[0];
+            let exactDeadline;
+            if (task.end_time) {
+                const safeTime = task.end_time.length === 5 ? `${task.end_time}:00` : task.end_time;
+                exactDeadline = new Date(`${dateStr}T${safeTime}`);
+            } else {
+                exactDeadline = new Date(`${dateStr}T23:59:59`);
+            }
+
+            const isOverdue = new Date() > exactDeadline && !task.is_completed;
+            const isEffectivelyLocked = task.is_locked || isOverdue; 
+
+            const isUnlockReq = task.unlock_status === 'REQUESTED';
             const isWaiting = task.manager_status === 'WAITING_APPROVAL';
             const isApproved = task.manager_status === 'APPROVED';
             const isRejected = task.manager_status === 'REJECTED';
-            const deadlineDate = new Date(task.deadline_date);
-            const isOverdue = new Date() > deadlineDate && !task.is_completed;
             
             const taskTypeMap = { 'live': 'Live Class', 'recording': 'Recording', 'document': 'PDF / Document', 'sPaper': 'Structured Paper', 'paper': 'MCQ Paper' };
             const niceType = taskTypeMap[task.task_type] || task.task_type;
 
             return (
-              <div key={task.id} className={`p-6 md:p-8 rounded-3xl border shadow-xl relative flex flex-col transition-all ${isLocked ? 'bg-red-950/20 border-red-900/50' : isApproved ? 'bg-emerald-950/20 border-emerald-900/50' : isWaiting ? 'bg-orange-950/20 border-orange-900/50' : isRejected ? 'bg-rose-950/20 border-rose-500/50' : 'bg-slate-800/60 border-white/10 hover:border-blue-500/50'}`}>
+              <div key={task.id} className={`p-6 md:p-8 rounded-3xl border shadow-xl relative flex flex-col transition-all ${isEffectivelyLocked ? 'bg-red-950/20 border-red-900/50' : isApproved ? 'bg-emerald-950/20 border-emerald-900/50' : isWaiting ? 'bg-orange-950/20 border-orange-900/50' : isRejected ? 'bg-rose-950/20 border-rose-500/50' : 'bg-slate-800/60 border-white/10 hover:border-blue-500/50'}`}>
                 
                 <div className="flex justify-between items-start mb-6">
                   <span className="text-sm font-black uppercase tracking-widest px-4 py-1.5 rounded-lg bg-black/40 border border-white/5 shadow-sm text-white">{niceType}</span>
-                  {isLocked && <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-red-400 bg-red-500/10 px-3 py-1.5 rounded-lg"><Lock size={14}/> Locked</span>}
-                  {isWaiting && <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-400 bg-orange-500/10 px-3 py-1.5 rounded-lg"><Clock size={14}/> Under Review</span>}
+                  {isUnlockReq && <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-yellow-400 bg-yellow-500/10 px-3 py-1.5 rounded-lg"><Clock size={14}/> Unlock Pending</span>}
+                  {isEffectivelyLocked && !isUnlockReq && <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-red-400 bg-red-500/10 px-3 py-1.5 rounded-lg"><Lock size={14}/> Locked</span>}
+                  {isWaiting && !isUnlockReq && !isEffectivelyLocked && <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-400 bg-orange-500/10 px-3 py-1.5 rounded-lg"><Clock size={14}/> Under Review</span>}
                   {isApproved && <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg"><CheckCircle2 size={14}/> Published</span>}
                 </div>
 
@@ -312,7 +345,7 @@ export default function CoordinatorTasks() {
                 
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-400 mb-6 bg-slate-950/40 w-max px-4 py-2 rounded-xl border border-white/5">
                   <Clock size={18} className={isOverdue && !isApproved && !isWaiting ? 'text-red-500' : 'text-blue-400'}/> 
-                  <span className={isOverdue && !isApproved && !isWaiting ? 'text-red-400' : ''}>Deadline: {task.end_time || deadlineDate.toLocaleTimeString()}</span>
+                  <span className={isOverdue && !isApproved && !isWaiting ? 'text-red-400' : ''}>Deadline: {task.end_time || exactDeadline.toLocaleTimeString()}</span>
                 </div>
 
                 {isRejected && (
@@ -323,15 +356,23 @@ export default function CoordinatorTasks() {
                 )}
 
                 <div className="mt-auto pt-4 border-t border-white/10">
-                  {isLocked ? (
-                    <button className="w-full bg-red-500/10 text-red-400 font-bold text-base py-4 rounded-2xl border border-red-500/30 cursor-not-allowed">
-                      Task Locked (Missed Deadline)
-                    </button>
+                  {isUnlockReq ? (
+                      <button className="w-full bg-yellow-500/10 text-yellow-500 font-bold text-base py-4 rounded-2xl border border-yellow-500/30 cursor-not-allowed flex items-center justify-center gap-2">
+                        <Clock size={18}/> Unlock Requested (Pending)
+                      </button>
+                  ) : isEffectivelyLocked ? (
+                      <button onClick={() => setUnlockModal({ isOpen: true, taskId: task.id, reason: '' })} className="w-full bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 font-bold text-base py-4 rounded-2xl border border-red-500/30 transition-colors flex justify-center items-center gap-2">
+                         <Unlock size={20}/> Request Unlock
+                      </button>
                   ) : isApproved || isWaiting ? (
-                    <div className="w-full bg-black/30 text-slate-400 font-bold text-base py-4 rounded-2xl border border-white/5 text-center">Task Submitted</div>
+                    <div className="w-full bg-black/30 text-slate-400 font-bold text-base py-4 rounded-2xl border border-white/5 text-center flex items-center justify-center gap-2"><CheckCircle2 size={20}/> Task Submitted</div>
                   ) : (
                     <button onClick={() => openTaskHub(task)} className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold text-lg py-4 rounded-2xl shadow-xl hover:scale-[1.02] flex items-center justify-center gap-3 transition-transform">
-                      <UploadCloud size={22}/> {isRejected ? 'Open Content Hub to Fix' : 'Open Content Hub Workspace'}
+                      {['live', 'recording', 'document', 'sPaper', 'paper'].includes(task.task_type) ? (
+                          <><UploadCloud size={22}/> {isRejected ? 'Open Content Hub to Fix' : 'Open Content Hub Workspace'}</>
+                      ) : (
+                          <><CheckCircle2 size={22}/> Complete Task</>
+                      )}
                     </button>
                   )}
                 </div>
@@ -341,183 +382,225 @@ export default function CoordinatorTasks() {
         )}
       </div>
 
+      {/* UNLOCK REQUEST MODAL */}
+      {unlockModal.isOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4 animate-in fade-in duration-200">
+              <div className="bg-slate-800/90 border border-white/10 rounded-3xl p-8 w-full max-w-md shadow-2xl backdrop-blur-2xl">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold text-white flex items-center gap-3"><Unlock className="text-red-400"/> Request Task Unlock</h3>
+                      <button onClick={() => setUnlockModal({isOpen: false, taskId: null, reason: ''})} className="text-slate-400 hover:text-white"><X size={20}/></button>
+                  </div>
+                  <form onSubmit={handleRequestUnlock} className="space-y-5">
+                      <div>
+                          <label className="text-sm text-slate-300 mb-2 block">Reason for Delay</label>
+                          <textarea required rows="3" value={unlockModal.reason} onChange={e => setUnlockModal({...unlockModal, reason: e.target.value})} placeholder="Please explain why you need an extension..." className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-red-500 resize-none"></textarea>
+                      </div>
+                      <button type="submit" className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3.5 rounded-xl shadow-lg transition-colors">Send Request to Manager</button>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {/* HUB WORKSPACE MODAL */}
       {hubModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 backdrop-blur-xl p-4 animate-in fade-in duration-300">
-            <div className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-7xl h-[95vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className={`bg-slate-900 border border-white/10 rounded-[2rem] w-full ${hubModal.isCustomTask ? 'max-w-3xl h-auto' : 'max-w-7xl h-[95vh]'} flex flex-col shadow-2xl overflow-hidden`}>
                 
                 <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-800/50 shrink-0">
                     <div>
-                        <h3 className="text-2xl font-bold text-white flex items-center gap-3"><MonitorPlay className="text-blue-400"/> Content Workspace</h3>
+                        <h3 className="text-2xl font-bold text-white flex items-center gap-3">
+                            {hubModal.isCustomTask ? <CheckCircle2 className="text-blue-400"/> : <MonitorPlay className="text-blue-400"/>} 
+                            {hubModal.isCustomTask ? 'Complete Task' : 'Content Workspace'}
+                        </h3>
                         <p className="text-sm text-slate-400 mt-1">{hubModal.task?.description}</p>
                     </div>
                     <button onClick={() => setHubModal(prev => ({...prev, isOpen: false}))} className="text-slate-400 hover:text-white bg-white/5 p-3 rounded-xl transition-all hover:bg-red-500"><X size={24}/></button>
                 </div>
 
                 {hubModal.loading ? (
-                    <div className="flex-1 flex flex-col items-center justify-center">
+                    <div className="p-20 flex flex-col items-center justify-center">
                         <Loader2 size={50} className="animate-spin text-blue-500 mb-4"/>
-                        <p className="text-slate-400">Loading Subject Resources...</p>
+                        <p className="text-slate-400">Loading Resources...</p>
                     </div>
                 ) : (
                     <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
                         
-                        {/* LEFT PANEL: EXISTING CONTENTS */}
-                        <div className="flex-1 lg:w-1/3 border-b lg:border-b-0 lg:border-r border-white/10 bg-slate-800/20 p-6 overflow-y-auto custom-scrollbar">
-                            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 sticky top-0 bg-slate-900/90 py-2 z-10">Existing Subject Contents</h4>
-                            
-                            {hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).length === 0 && hubModal.contents.filter(c => parseInt(c.type) === hubModal.form.type).length === 0 ? (
-                                <p className="text-center text-slate-500 py-10">No existing contents for this type.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).map(folder => (
-                                        <div key={folder.id} className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                                            <div className="flex items-center gap-3 mb-4 border-b border-white/5 pb-3">
-                                                <FolderOpen className="text-blue-400" size={20}/>
-                                                <h5 className="font-bold text-white">{folder.title}</h5>
-                                            </div>
-                                            <div className="space-y-2">
-                                                {hubModal.contents.filter(c => String(c.content_group_id) === String(folder.id) && parseInt(c.type) === hubModal.form.type).map(content => (
-                                                    <div key={content.id} className="flex justify-between items-center bg-black/30 p-3 rounded-xl border border-white/5 hover:border-white/10">
-                                                        <div className="overflow-hidden pr-2">
-                                                            <p className="text-sm font-bold text-slate-200 truncate">{content.title}</p>
-                                                            <p className="text-[10px] text-slate-400">{content.date ? content.date.split('T')[0] : 'No Date'}</p>
+                        {/* 🔥 CUSTOM TASK එකක් නෙමේ නම් විතරක් Left Panel එක පෙන්නනවා 🔥 */}
+                        {!hubModal.isCustomTask && (
+                            <div className="flex-1 lg:w-1/3 border-b lg:border-b-0 lg:border-r border-white/10 bg-slate-800/20 p-6 overflow-y-auto custom-scrollbar">
+                                <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 sticky top-0 bg-slate-900/90 py-2 z-10">Existing Subject Contents</h4>
+                                
+                                {hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).length === 0 && hubModal.contents.filter(c => parseInt(c.type) === hubModal.form.type).length === 0 ? (
+                                    <p className="text-center text-slate-500 py-10">No existing contents for this type.</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).map(folder => (
+                                            <div key={folder.id} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                                                <div className="flex items-center gap-3 mb-4 border-b border-white/5 pb-3">
+                                                    <FolderOpen className="text-blue-400" size={20}/>
+                                                    <h5 className="font-bold text-white">{folder.title}</h5>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {hubModal.contents.filter(c => String(c.content_group_id) === String(folder.id) && parseInt(c.type) === hubModal.form.type).map(content => (
+                                                        <div key={content.id} className="flex justify-between items-center bg-black/30 p-3 rounded-xl border border-white/5 hover:border-white/10">
+                                                            <div className="overflow-hidden pr-2">
+                                                                <p className="text-sm font-bold text-slate-200 truncate">{content.title}</p>
+                                                                <p className="text-[10px] text-slate-400">{content.date ? content.date.split('T')[0] : 'No Date'}</p>
+                                                            </div>
+                                                            <button onClick={() => setPreviewData(content)} className="bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">VIEW</button>
                                                         </div>
-                                                        <button onClick={() => setPreviewData(content)} className="bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">VIEW</button>
-                                                    </div>
-                                                ))}
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                        {/* RIGHT PANEL: FULL TASK SUBMISSION FORM */}
-                        <div className="flex-[2] p-6 md:p-8 overflow-y-auto custom-scrollbar bg-slate-900">
+                        {/* RIGHT PANEL: FULL TASK SUBMISSION FORM / CUSTOM TASK FORM */}
+                        <div className={`flex-[2] p-6 md:p-8 overflow-y-auto custom-scrollbar bg-slate-900 ${hubModal.isCustomTask ? 'max-h-[500px]' : ''}`}>
                             <form onSubmit={handleHubSubmit} className="space-y-8 max-w-4xl mx-auto">
                                 
-                                <label className="flex items-center gap-4 cursor-pointer w-full group bg-orange-500/10 p-5 rounded-2xl border border-orange-500/20 hover:border-orange-500/40 transition-colors">
-                                    <div className="relative flex items-center justify-center">
-                                        <input type="checkbox" checked={hubModal.noChanges} onChange={(e) => setHubModal(prev => ({...prev, noChanges: e.target.checked}))} className="peer w-6 h-6 appearance-none bg-black/40 border-2 border-orange-500 rounded-lg checked:bg-orange-500" />
-                                        <CheckCircle2 size={16} className="text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none"/>
-                                    </div>
-                                    <div>
-                                        <span className="text-base font-bold text-orange-400">No Changes Needed</span>
-                                        <p className="text-xs text-orange-200/60 mt-1">Tick this if the content is already updated in the system.</p>
-                                    </div>
-                                </label>
-
-                                {!hubModal.noChanges && (
-                                    <div className="space-y-8 animate-in fade-in duration-300">
-
-                                        <div className="flex flex-col md:flex-row gap-6">
-                                            <div className="flex-1">
-                                                <label className="text-sm font-semibold text-slate-300 mb-2 block uppercase tracking-wider">Content Type</label>
-                                                <select disabled value={hubModal.form.type} className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white outline-none cursor-not-allowed opacity-70">
-                                                    <option value={1}>Live Class</option>
-                                                    <option value={2}>Recording</option>
-                                                    <option value={3}>Document / PDF</option>
-                                                    <option value={4}>Structured Paper</option>
-                                                    <option value={5}>MCQ Paper</option>
-                                                </select>
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <label className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Target Folder</label>
-                                                    <button type="button" onClick={() => setNewFolderModal({ isOpen: true, title: '', order: hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).length + 1 })} className="text-xs font-bold text-blue-400 hover:text-white flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded-lg transition-colors"><Plus size={12}/> New Folder</button>
-                                                </div>
-                                                <select value={hubModal.form.contentGroupId} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, contentGroupId: e.target.value}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-green-500">
-                                                    <option value="" className="bg-slate-800">No Folder (Uncategorized)</option>
-                                                    {hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).map(f => (
-                                                        <option key={f.id} value={f.id} className="bg-slate-800">{f.title}</option>
-                                                    ))}
-                                                </select>
+                                {/* 🔥 CUSTOM TASK VIEW 🔥 */}
+                                {hubModal.isCustomTask ? (
+                                    <div className="space-y-6">
+                                        <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-2xl flex items-start gap-4">
+                                            <CheckCircle2 className="text-blue-400 mt-1" size={24}/>
+                                            <div>
+                                                <h4 className="text-lg font-bold text-white mb-1">Confirm Completion</h4>
+                                                <p className="text-sm text-blue-200/70">You are about to mark this custom assignment as completed. If you have any proof (Image/PDF), you can optionally upload it below.</p>
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/5 p-6 md:p-8 rounded-3xl border border-white/10">
-                                            <div className="md:col-span-2">
-                                                <label className="text-sm font-semibold text-slate-300 mb-2 block">Title *</label>
-                                                <input type="text" required value={hubModal.form.title} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, title: e.target.value}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white outline-none focus:border-green-500" />
+                                        <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
+                                            <label className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2"><FileUp size={18}/> Optional Proof Upload (Image / PDF)</label>
+                                            <input type="file" accept="image/*,.pdf" onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, file: e.target.files[0]}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-base text-white file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-sm file:bg-white/10 file:text-white hover:file:bg-white/20 transition-all cursor-pointer" />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    // 🔥 STANDARD CONTENT HUB VIEW 🔥
+                                    <>
+                                        <label className="flex items-center gap-4 cursor-pointer w-full group bg-orange-500/10 p-5 rounded-2xl border border-orange-500/20 hover:border-orange-500/40 transition-colors">
+                                            <div className="relative flex items-center justify-center">
+                                                <input type="checkbox" checked={hubModal.noChanges} onChange={(e) => setHubModal(prev => ({...prev, noChanges: e.target.checked}))} className="peer w-6 h-6 appearance-none bg-black/40 border-2 border-orange-500 rounded-lg checked:bg-orange-500" />
+                                                <CheckCircle2 size={16} className="text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none"/>
                                             </div>
-                                            
-                                            {(hubModal.form.type === 1 || hubModal.form.type === 2) && (
-                                                <div className="md:col-span-2">
-                                                    <label className="text-sm font-semibold text-slate-300 mb-2 block">URL Link *</label>
-                                                    <input type="url" required value={hubModal.form.link} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, link: e.target.value}}))} placeholder="Zoom / YouTube Link..." className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white outline-none focus:border-green-500" />
-                                                </div>
-                                            )}
+                                            <div>
+                                                <span className="text-base font-bold text-orange-400">No Content Changes Needed</span>
+                                                <p className="text-xs text-orange-200/60 mt-1">Tick this if you don't need to add anything to the Content Hub right now.</p>
+                                            </div>
+                                        </label>
 
-                                            {hubModal.form.type === 2 && (
-                                                <div>
-                                                    <label className="text-sm font-semibold text-slate-300 mb-2 block">Meeting ID (Optional)</label>
-                                                    <input type="text" value={hubModal.form.zoomMeetingId} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, zoomMeetingId: e.target.value}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white outline-none focus:border-green-500" />
-                                                </div>
-                                            )}
-
-                                            {(hubModal.form.type === 3 || hubModal.form.type === 4 || hubModal.form.type === 5) && (
-                                                <div className="md:col-span-2">
-                                                    <label className="text-sm font-semibold text-slate-300 mb-2 block">File Upload *</label>
-                                                    <input type="file" required onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, file: e.target.files[0]}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-base text-white file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-sm file:bg-white/10 file:text-white" />
-                                                </div>
-                                            )}
-
-                                            {hubModal.form.type === 1 && (
-                                                <>
-                                                    <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Start Time</label><input type="time" value={hubModal.form.startTime} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, startTime: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
-                                                    <div><label className="text-sm font-semibold text-slate-300 mb-2 block">End Time</label><input type="time" value={hubModal.form.endTime} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, endTime: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
-                                                </>
-                                            )}
-
-                                            {hubModal.form.type === 5 && (
-                                                <>
-                                                    <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Time (Min) *</label><input type="number" required value={hubModal.form.paperTime} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, paperTime: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
-                                                    <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Questions *</label><input type="number" required value={hubModal.form.questionCount} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, questionCount: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
-                                                </>
-                                            )}
-
-                                            <div className="md:col-span-2 mt-2">
-                                                <label className="flex items-center gap-4 cursor-pointer w-max group bg-black/40 p-4 rounded-2xl border border-white/5 hover:border-white/20 transition-colors">
-                                                    <div className="relative flex items-center justify-center">
-                                                        <input type="checkbox" checked={hubModal.form.isFree} onChange={(e) => setHubModal(prev => ({...prev, form: {...prev.form, isFree: e.target.checked}}))} className="peer w-6 h-6 appearance-none bg-black/60 border-2 border-slate-500 rounded-lg checked:bg-green-500 checked:border-green-500" />
-                                                        <CheckCircle2 size={16} className="text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none"/>
+                                        {!hubModal.noChanges && (
+                                            <div className="space-y-8 animate-in fade-in duration-300">
+                                                <div className="flex flex-col md:flex-row gap-6">
+                                                    <div className="flex-1">
+                                                        <label className="text-sm font-semibold text-slate-300 mb-2 block uppercase tracking-wider">Content Type</label>
+                                                        <select disabled value={hubModal.form.type} className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white outline-none cursor-not-allowed opacity-70">
+                                                            <option value={1}>Live Class</option>
+                                                            <option value={2}>Recording</option>
+                                                            <option value={3}>Document / PDF</option>
+                                                            <option value={4}>Structured Paper</option>
+                                                            <option value={5}>MCQ Paper</option>
+                                                        </select>
                                                     </div>
-                                                    <span className="text-base font-bold text-slate-200 group-hover:text-white">Mark as Free Content (Open for all)</span>
-                                                </label>
-                                            </div>
-                                        </div>
+                                                    <div className="flex-1">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <label className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Target Folder</label>
+                                                            <button type="button" onClick={() => setNewFolderModal({ isOpen: true, title: '', order: hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).length + 1 })} className="text-xs font-bold text-blue-400 hover:text-white flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded-lg transition-colors"><Plus size={12}/> New Folder</button>
+                                                        </div>
+                                                        <select value={hubModal.form.contentGroupId} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, contentGroupId: e.target.value}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-green-500">
+                                                            <option value="" className="bg-slate-800">No Folder (Uncategorized)</option>
+                                                            {hubModal.folders.filter(f => parseInt(f.type) === hubModal.form.type).map(f => (
+                                                                <option key={f.id} value={f.id} className="bg-slate-800">{f.title}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
 
-                                        {/* 🔥 ASSIGN TO GROUPS 🔥 */}
-                                        <div className="pt-6">
-                                            <h4 className="text-lg font-bold text-white mb-6 flex items-center gap-3"><BookOpen size={24} className="text-blue-500"/> Assign to Groups</h4>
-                                            <div className="bg-white/5 rounded-3xl p-6 md:p-8 border border-white/10">
-                                                {hubModal.matchingCourses.length === 0 ? (
-                                                    <p className="text-red-400 font-medium">No matching groups found.</p>
-                                                ) : (
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                        {hubModal.matchingCourses.map((mc, idx) => (
-                                                            <label key={idx} className={`flex items-center gap-4 cursor-pointer p-5 rounded-2xl border transition-colors group ${hubModal.form.selectedCourses.includes(mc.courseId) ? 'bg-blue-600/20 border-blue-500/50 shadow-lg shadow-blue-500/10' : 'bg-black/20 border-white/10 hover:border-white/20'}`}>
-                                                                <div className="relative flex items-center justify-center shrink-0">
-                                                                    <input type="checkbox" checked={hubModal.form.selectedCourses.includes(mc.courseId)} onChange={() => toggleCourseSelection(mc.courseId)} className="peer w-6 h-6 appearance-none bg-black/40 border-2 border-slate-500 rounded-lg checked:bg-blue-500 checked:border-blue-500" />
-                                                                    <CheckCircle2 size={16} className="text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none"/>
-                                                                </div>
-                                                                <div>
-                                                                    <span className={`text-base font-bold truncate block ${hubModal.form.selectedCourses.includes(mc.courseId) ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{mc.groupName}</span>
-                                                                    <span className="text-[11px] font-bold text-slate-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 mt-1 inline-block">{mc.groupType === 1 ? 'Monthly' : 'Full Payment'}</span>
-                                                                </div>
-                                                            </label>
-                                                        ))}
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/5 p-6 md:p-8 rounded-3xl border border-white/10">
+                                                    <div className="md:col-span-2">
+                                                        <label className="text-sm font-semibold text-slate-300 mb-2 block">Title *</label>
+                                                        <input type="text" required value={hubModal.form.title} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, title: e.target.value}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white outline-none focus:border-green-500" />
+                                                    </div>
+                                                    
+                                                    {(hubModal.form.type === 1 || hubModal.form.type === 2) && (
+                                                        <div className="md:col-span-2">
+                                                            <label className="text-sm font-semibold text-slate-300 mb-2 block">URL Link *</label>
+                                                            <input type="url" required value={hubModal.form.link} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, link: e.target.value}}))} placeholder="Zoom / YouTube Link..." className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white outline-none focus:border-green-500" />
+                                                        </div>
+                                                    )}
+
+                                                    {hubModal.form.type === 2 && (
+                                                        <div>
+                                                            <label className="text-sm font-semibold text-slate-300 mb-2 block">Meeting ID (Optional)</label>
+                                                            <input type="text" value={hubModal.form.zoomMeetingId} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, zoomMeetingId: e.target.value}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white outline-none focus:border-green-500" />
+                                                        </div>
+                                                    )}
+
+                                                    {(hubModal.form.type === 3 || hubModal.form.type === 4 || hubModal.form.type === 5) && (
+                                                        <div className="md:col-span-2">
+                                                            <label className="text-sm font-semibold text-slate-300 mb-2 block">File Upload *</label>
+                                                            <input type="file" required onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, file: e.target.files[0]}}))} className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-base text-white file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-sm file:bg-white/10 file:text-white" />
+                                                        </div>
+                                                    )}
+
+                                                    {hubModal.form.type === 1 && (
+                                                        <>
+                                                            <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Start Time</label><input type="time" value={hubModal.form.startTime} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, startTime: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
+                                                            <div><label className="text-sm font-semibold text-slate-300 mb-2 block">End Time</label><input type="time" value={hubModal.form.endTime} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, endTime: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
+                                                        </>
+                                                    )}
+
+                                                    {hubModal.form.type === 5 && (
+                                                        <>
+                                                            <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Time (Min) *</label><input type="number" required value={hubModal.form.paperTime} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, paperTime: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
+                                                            <div><label className="text-sm font-semibold text-slate-300 mb-2 block">Questions *</label><input type="number" required value={hubModal.form.questionCount} onChange={e => setHubModal(prev => ({...prev, form: {...prev.form, questionCount: e.target.value}}))} className="w-full bg-black/20 border border-white/10 focus:border-green-500 rounded-xl p-4 text-white outline-none" /></div>
+                                                        </>
+                                                    )}
+
+                                                    <div className="md:col-span-2 mt-2">
+                                                        <label className="flex items-center gap-4 cursor-pointer w-max group bg-black/40 p-4 rounded-2xl border border-white/5 hover:border-white/20 transition-colors">
+                                                            <div className="relative flex items-center justify-center">
+                                                                <input type="checkbox" checked={hubModal.form.isFree} onChange={(e) => setHubModal(prev => ({...prev, form: {...prev.form, isFree: e.target.checked}}))} className="peer w-6 h-6 appearance-none bg-black/60 border-2 border-slate-500 rounded-lg checked:bg-green-500 checked:border-green-500" />
+                                                                <CheckCircle2 size={16} className="text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none"/>
+                                                            </div>
+                                                            <span className="text-base font-bold text-slate-200 group-hover:text-white">Mark as Free Content (Open for all)</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                {hubModal.matchingCourses.length > 0 && (
+                                                    <div className="pt-6">
+                                                        <h4 className="text-lg font-bold text-white mb-6 flex items-center gap-3"><BookOpen size={24} className="text-blue-500"/> Assign to Groups</h4>
+                                                        <div className="bg-white/5 rounded-3xl p-6 md:p-8 border border-white/10">
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                                {hubModal.matchingCourses.map((mc, idx) => (
+                                                                    <label key={idx} className={`flex items-center gap-4 cursor-pointer p-5 rounded-2xl border transition-colors group ${hubModal.form.selectedCourses.includes(mc.courseId) ? 'bg-blue-600/20 border-blue-500/50 shadow-lg shadow-blue-500/10' : 'bg-black/20 border-white/10 hover:border-white/20'}`}>
+                                                                        <div className="relative flex items-center justify-center shrink-0">
+                                                                            <input type="checkbox" checked={hubModal.form.selectedCourses.includes(mc.courseId)} onChange={() => toggleCourseSelection(mc.courseId)} className="peer w-6 h-6 appearance-none bg-black/40 border-2 border-slate-500 rounded-lg checked:bg-blue-500 checked:border-blue-500" />
+                                                                            <CheckCircle2 size={16} className="text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none"/>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className={`text-base font-bold truncate block ${hubModal.form.selectedCourses.includes(mc.courseId) ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{mc.groupName}</span>
+                                                                            <span className="text-[11px] font-bold text-slate-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 mt-1 inline-block">{mc.groupType === 1 ? 'Monthly' : 'Full Payment'}</span>
+                                                                        </div>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
-                                        </div>
-
-                                    </div>
+                                        )}
+                                    </>
                                 )}
 
-                                <div className="pt-6 border-t border-white/10">
+                                <div className={`pt-6 ${!hubModal.isCustomTask ? 'border-t border-white/10' : ''}`}>
                                     <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-5 text-xl rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-transform hover:scale-[1.01]">
-                                        <CheckCircle2 size={28}/> {hubModal.noChanges ? "Complete Task (No Changes)" : "Submit Content & Complete Task"}
+                                        <CheckCircle2 size={28}/> 
+                                        {hubModal.isCustomTask ? "Mark Task as Completed" : (hubModal.noChanges ? "Complete Task (No Changes)" : "Submit Content & Complete Task")}
                                     </button>
                                 </div>
                             </form>

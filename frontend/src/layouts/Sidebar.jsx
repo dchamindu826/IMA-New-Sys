@@ -67,6 +67,7 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
             <NavLink to="/admin/dashboard" className={getNavLinkClass}><LayoutDashboard size={18} /> System Overview</NavLink>
             <NavLink to="/admin/staff" className={getNavLinkClass}><Users size={18} /> Staff Management</NavLink>
             <NavLink to="/admin/crm-setup" className={getNavLinkClass}><MessageSquare size={18} /> AI CRM Setup</NavLink>
+            <NavLink to="/admin/student-manager" className={getNavLinkClass}><Users size={18} /> Student Database</NavLink>
             
             <div className="text-[10px] uppercase font-black text-slate-500 mt-3 mb-1 pl-2 tracking-widest">Academic & Operations</div>
             <NavLink to="/manager/timetable" className={getNavLinkClass}><CalendarDays size={18} /> Master Timetable</NavLink>
@@ -74,6 +75,7 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
             <NavLink to="/admin/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Content Hub</NavLink>
             <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> WhatsApp CRM</NavLink>
             <NavLink to="/admin/coordinator-tasks" className={getNavLinkClass}><ListTodo size={18} /> Staff Tasks View</NavLink>
+            <NavLink to="/admin/staff-crm" className={getNavLinkClass}><PhoneCall size={18} /> Global Staff CRM</NavLink>
             
             <div className="text-[10px] uppercase font-black text-slate-500 mt-3 mb-1 pl-2 tracking-widest">Finance Dept</div>
             <NavLink to="/admin/payments" className={getNavLinkClass}><Banknote size={18} /> Payment Hub</NavLink>

@@ -702,26 +702,27 @@ model daily_tasks {
   id               Int       @id @default(autoincrement())
   staff_id         Int
   batch_id         BigInt    @db.UnsignedBigInt
-  schedule_id      Int?      // 🔥 මේක තමයි අර Error එක ආපු Column එක 🔥
+  schedule_id      Int?
   
   task_type        String    
   description      String    @db.Text
   
-  // 🔥 Time Limits (ඔයා ඉල්ලපු විදියට) 🔥
   start_date       DateTime? @db.Date
   deadline_date    DateTime? @db.Date
   start_time       String?
   end_time         String?
   
-  // Staff Submission & Approvals
   is_completed     Boolean   @default(false)
   submitted_proof  String?   @db.Text  
-  submitted_at     DateTime? 
-  
-  // Manager Action & Gamification
-  manager_status   String    @default("PENDING") // PENDING, SUBMITTED, APPROVED, REJECTED
+  submitted_at     DateTime?
+
+  // 🚀 මේ අලුත් පේළි දෙක add කරන්න 🚀
+  unlock_status    String    @default("NONE")
+  unlock_reason    String?   @db.Text
+
+  manager_status   String    @default("PENDING") 
   reject_reason    String?   @db.Text
-  resubmit_count   Int       @default(0) // 🔥 Reject වුනාම වැඩිවෙනවා, Success rate එක අඩුවෙනවා 🔥
+  resubmit_count   Int       @default(0) 
   
   is_locked        Boolean   @default(false) 
   created_at       DateTime  @default(now())
@@ -739,6 +740,7 @@ model task_templates {
   id             Int      @id @default(autoincrement())
   business_id    BigInt   @db.UnsignedBigInt
   title          String   
+  description    String?  @db.Text // 🔥 මේ පේළිය අලුතෙන් එකතු කරන්න
   has_time_limit Boolean  @default(false)
   created_at     DateTime @default(now())
 }

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 
 // 1. Middleware එක Import කරන විදිහ
 const { protect } = require('../../middleware/authMiddleware');
@@ -19,11 +20,21 @@ const { getDownloadRecording } = require('../../controllers/mobile/downloadContr
 // Multer Storage - Images Upload කරන්න (Profile + Slips)
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
+        let destPath;
+        
         if (file.fieldname === 'slipImg') {
-            cb(null, path.join(__dirname, '../../../public/slips')); // Slips යන තැන
+            // 🔥 ../ දෙකයි එන්න ඕන. එතකොට backend/public/slips වලට යන්නේ 🔥
+            destPath = path.join(__dirname, '../../public/slips'); 
         } else {
-            cb(null, path.join(__dirname, '../../../public/userImages')); // Profile Photos යන තැන
+            destPath = path.join(__dirname, '../../public/userImages'); 
         }
+
+        // 🟢 ෆෝල්ඩර් එක නැත්නම් Auto හදන්න කියන කෑල්ල 🟢
+        if (!fs.existsSync(destPath)) {
+            fs.mkdirSync(destPath, { recursive: true });
+        }
+
+        cb(null, destPath);
     },
     filename: function (req, file, cb) {
         cb(null, Date.now() + '_' + file.originalname.replace(/\s+/g, '_'));
@@ -51,6 +62,7 @@ router.get('/getAllUpcomingLives', protect, getAllUpcomingLives);
 // --- 5. PAYMENTS ---
 router.get('/myPayments', protect, getMyPayments);
 router.post('/uploadSlip', protect, upload.single('slipImg'), uploadSlip);
+router.post('/enrollWithSlip', protect, upload.single('slipImg'), uploadSlip);
 
 // --- 6. COURSE ENROLLMENT ---
 router.post('/courseConfirm', protect, courseConfirm);
