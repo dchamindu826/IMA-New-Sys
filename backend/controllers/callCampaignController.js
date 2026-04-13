@@ -1,64 +1,126 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+
 const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
 
-// Staff ta assign karapu leads ganna
-const getAssignedCalls = async (req, res) => {
+// ==========================================
+// 1. GET CALL CAMPAIGN LEADS (Staff & Manager Separation)
+// ==========================================
+const getStaffLeads = async (req, res) => {
     try {
-        const staffId = req.user.id;
-        const { phase } = req.query; // FREE_SEMINAR or AFTER_SEMINAR
+        const staff_id = req.user.id; 
+        const userRole = (req.user.role || '').toLowerCase().trim();
+        const { phase, agentId } = req.query; // phase = 'FREE_SEMINAR' or 'AFTER_SEMINAR'
 
-        const leads = await prisma.whatsapp_leads.findMany({
-            where: { assigned_to: BigInt(staffId), phase: phase },
-            orderBy: { created_at: 'desc' }
+        let whereClause = { status: { not: 'CLOSED' } };
+
+        // Phase Filter එක
+        if (phase === 'FREE_SEMINAR') whereClause.leadType = 'Free Seminar';
+        else if (phase === 'AFTER_SEMINAR') whereClause.leadType = 'After Seminar';
+
+        // 🔥 Manager ද Staff ද කියලා බලලා Filter කරනවා 🔥
+        const isAdmin = ['system admin', 'admin', 'director', 'manager', 'superadmin'].includes(userRole);
+        if (!isAdmin) {
+            whereClause.assigned_to = parseInt(staff_id); // Staff ට එයාගේ ඒවා විතරයි
+        } else if (agentId) {
+            whereClause.assigned_to = parseInt(agentId); // Admin ට Agent ව filter කරන්න පුළුවන්
+        }
+
+        const leads = await prisma.leads.findMany({
+            where: whereClause,
+            orderBy: { updated_at: 'desc' }
         });
 
-        // Samanyayen call_phase kiyala column ekak nethi nisa, api default 1 gannawa.
-        const mappedLeads = leads.map(l => ({ ...l, current_call_phase: 1 }));
-        
-        res.status(200).json(safeJson(mappedLeads));
+        // අන්තිමට ගත්ත කෝල් එකේ විස්තර (Log එක) අරන් එනවා
+        const leadsWithLogs = await Promise.all(leads.map(async (lead) => {
+            const logs = await prisma.call_logs.findMany({
+                where: { lead_id: lead.id },
+                orderBy: { created_at: 'desc' },
+                take: 1 
+            });
+            
+            let current_call_phase = 1;
+            if (lead.status === 'PHASE_2') current_call_phase = 2;
+            if (lead.status === 'PHASE_3') current_call_phase = 3;
+
+            return { 
+                id: lead.id.toString(),
+                customer_name: lead.fName + (lead.lName ? ` ${lead.lName}` : ''),
+                phone_number: lead.phone,
+                status: logs[0]?.remark || 'Pending',
+                feedback: logs[0]?.note || '',
+                current_call_phase: current_call_phase,
+                assigned_to: lead.assigned_to?.toString()
+            };
+        }));
+
+        return res.status(200).json(safeJson(leadsWithLogs));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error("Get Staff Leads Error:", error);
+        return res.status(500).json({ message: error.message });
     }
 };
 
-// Call eka log karanna
-const saveCallLog = async (req, res) => {
+// ==========================================
+// 2. UPDATE CALL LOG & PHASE SHIFTING LOGIC
+// ==========================================
+const updateCallLog = async (req, res) => {
     try {
-        const staffId = req.user.id;
-        const { lead_id, method, attempts, remark, note, current_phase } = req.body;
+        const { lead_id, phase, call_method, attempts, status, feedback } = req.body;
+        const staff_id = parseInt(req.user.id);
 
-        // Call Log eka Database ekata save karanawa
+        // 1. Call Log එක සේව් කරනවා
         await prisma.call_logs.create({
             data: {
                 lead_id: BigInt(lead_id),
-                staff_id: parseInt(staffId),
-                phase: parseInt(current_phase),
+                staff_id: staff_id,
+                phase: parseInt(phase),
                 attempts: parseInt(attempts),
-                remark: remark,
-                method: method,
-                note: note || ""
+                remark: status,
+                method: call_method,
+                note: feedback || "",
+                created_at: new Date()
             }
         });
 
-        let nextPhase = parseInt(current_phase);
+        // 2. Phase Shifting Logic (No Answer -> Phase 2 -> Phase 3 -> Closed)
+        let nextStatus = `PHASE_${phase}`;
         let isCompleted = false;
+        let phaseChanged = false;
 
-        // "No Answer" nam Phase eka wadi karanawa (Max 3)
-        if (remark === 'No Answer') {
-            if (nextPhase < 3) {
-                nextPhase += 1;
+        if (status === 'Reject' || status === 'Answer') {
+            nextStatus = 'CLOSED'; // Answer කරත්, Reject කරත් එතනින් ඉවරයි
+            isCompleted = true;
+        } else if (status === 'No Answer') {
+            if (parseInt(phase) < 3) {
+                nextStatus = `PHASE_${parseInt(phase) + 1}`; // Phase 1 නම් 2 ට යනවා, 2 නම් 3 ට යනවා
+                phaseChanged = true;
             } else {
-                isCompleted = true; // Phase 3 ත් No Answer nam iwarai
+                nextStatus = 'CLOSED'; // Phase 3 එකෙත් No Answer නම් ඉවරයි
+                isCompleted = true;
             }
-        } else if (remark === 'Answer' || remark === 'Reject') {
-            isCompleted = true; // Answer/Reject nam e number eka iwarai
         }
 
-        res.status(200).json({ message: "Call Logged Successfully", nextPhase, isCompleted });
+        // Lead එක අප්ඩේට් කරනවා
+        await prisma.leads.update({
+            where: { id: BigInt(lead_id) },
+            data: { status: nextStatus, updated_at: new Date() }
+        });
+
+        return res.status(200).json({ 
+            message: 'Call log updated', 
+            nextPhase: nextStatus, 
+            isCompleted: isCompleted,
+            phaseChanged: phaseChanged
+        });
+
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error("Update Call Log Error:", error);
+        return res.status(500).json({ message: error.message });
     }
 };
 
-module.exports = { getAssignedCalls, saveCallLog };
+module.exports = {
+    getStaffLeads,
+    updateCallLog
+};

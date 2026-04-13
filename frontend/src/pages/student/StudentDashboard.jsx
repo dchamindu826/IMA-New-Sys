@@ -1,7 +1,7 @@
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import axios from '../../api/axios';
 import { Menu, LogOut, AlertTriangle, Info, Lock } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom'; 
 import Sidebar from './components/Sidebar';
 import EnrollmentTab from './components/EnrollmentTab';
 import PaymentHistory from './components/PaymentHistory';
@@ -11,8 +11,24 @@ import DeliveryHub from './components/DeliveryHub';
 import ProfileSettings from './components/ProfileSettings';
 
 const StudentDashboard = () => {
+
+  const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate(); 
+
+  // 🔥 FIX: මේ ටික useEffect එකෙන් එලියට ගත්තා. එතකොට API calls යන්න කලින්ම Token එක සේව් වෙනවා! 🔥
+  const urlToken = searchParams.get('token');
+  const urlBusinessId = searchParams.get('businessId');
+
+  if (urlToken) {
+    localStorage.setItem('token', urlToken);
+    localStorage.setItem('userToken', urlToken); 
+  }
+
+  if (urlBusinessId) {
+    localStorage.setItem('selectedBusiness', urlBusinessId); 
+    localStorage.setItem('businessId', urlBusinessId); 
+  }
   
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'home'); 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -22,6 +38,11 @@ const StudentDashboard = () => {
   const [alerts, setAlerts] = useState([]); 
 
   useEffect(() => {
+    // 🔥 URL එකේ තියෙන Token කෑල්ල අයින් කරලා දානවා (Security එකට හොඳයි)
+    if (urlToken || urlBusinessId) {
+        navigate(location.pathname, { replace: true });
+    }
+
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -36,7 +57,7 @@ const StudentDashboard = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [urlToken, urlBusinessId, location.pathname, navigate]);
 
   const handleLogout = () => {
       localStorage.removeItem('token');

@@ -43,70 +43,112 @@ router.post('/messages/send', protect, sendManualMessage);
 router.put('/contacts/:id/read', protect, markContactRead); 
 router.get('/contacts', protect, getContacts);
 
+// 🔥 FIX: Import කරද්දි WhatsApp එකටයි Call Campaign එකටයි දෙකටම යනවා 🔥
 router.post("/contact/add", protect, async (req, res) => {
     try {
-        const { phoneNumber, name } = req.body;
+        const { phoneNumber, name, assignedTo } = req.body;
         if (!phoneNumber) return res.status(400).json({ message: "Phone number is required." });
 
         let cleanPhone = phoneNumber.replace(/\D/g, '');
         if (cleanPhone.startsWith('0')) cleanPhone = '94' + cleanPhone.substring(1);
 
-        const existing = await prisma.whatsapp_leads.findFirst({ 
-            where: { phone_number: cleanPhone } 
-        });
-        
-        if (existing) {
-            return res.status(200).json(safeJson({ ...existing, id: existing.id, phoneNumber: existing.phone_number }));
+        const userRole = (req.user?.role || '').toLowerCase();
+        const isAdmin = ['system admin', 'admin', 'director', 'manager', 'superadmin'].includes(userRole);
+        let targetAssignee = !isAdmin ? parseInt(req.user.id) : (assignedTo ? parseInt(assignedTo) : null);
+
+        // 1. Save to WhatsApp Inbox (whatsapp_leads)
+        let whatsappLead = await prisma.whatsapp_leads.findFirst({ where: { phone_number: cleanPhone } });
+        if (!whatsappLead) {
+            whatsappLead = await prisma.whatsapp_leads.create({
+                data: {
+                    phone_number: cleanPhone,
+                    customer_name: name || `Guest ${cleanPhone.slice(-4)}`,
+                    unread_count: 0,
+                    status: targetAssignee ? 'Assigned' : 'Imported',
+                    assigned_to: targetAssignee ? BigInt(targetAssignee) : null,
+                    last_message_time: new Date()
+                }
+            });
         }
 
-        const newContact = await prisma.whatsapp_leads.create({
-            data: {
-                phone_number: cleanPhone,
-                customer_name: name || `Guest ${cleanPhone.slice(-4)}`,
-                unread_count: 0,
-                status: 'Imported',
-                last_message_time: new Date()
-            }
-        });
+        // 2. Save to Call Campaign (leads)
+        let callLead = await prisma.leads.findUnique({ where: { phone: cleanPhone } });
+        if (!callLead) {
+            await prisma.leads.create({
+                data: {
+                    fName: name || `Guest ${cleanPhone.slice(-4)}`,
+                    phone: cleanPhone,
+                    leadType: 'Free Seminar', // Default phase for imported
+                    source: 'Manual Import',
+                    status: targetAssignee ? 'PHASE_1' : 'NEW',
+                    assigned_to: targetAssignee
+                }
+            });
+        }
 
-        return res.status(201).json(safeJson({ ...newContact, id: newContact.id, phoneNumber: newContact.phone_number }));
+        return res.status(201).json(safeJson({ ...whatsappLead, id: whatsappLead.id, phoneNumber: whatsappLead.phone_number }));
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Failed to import contact. " + err.message });
     }
 });
 
+// 🔥 FIX: Bulk Import කරද්දිත් WhatsApp එකටයි Call Campaign එකටයි දෙකටම යනවා 🔥
 router.post("/contact/bulk-add", protect, async (req, res) => {
     try {
         const { contacts } = req.body; 
         if (!contacts || !Array.isArray(contacts) || contacts.length === 0) return res.status(400).json({ message: "No contacts provided" });
 
-        const existingContacts = await prisma.whatsapp_leads.findMany({ select: { phone_number: true } });
-        const existingPhones = new Set(existingContacts.map(c => c.phone_number));
+        const existingWaContacts = await prisma.whatsapp_leads.findMany({ select: { phone_number: true } });
+        const existingWaPhones = new Set(existingWaContacts.map(c => c.phone_number));
 
-        const newContactsToInsert = [];
-        const uniqueIncomingPhones = new Set(); 
+        const existingCallLeads = await prisma.leads.findMany({ select: { phone: true } });
+        const existingCallPhones = new Set(existingCallLeads.map(c => c.phone));
+
+        const newWaToInsert = [];
+        const newCallToInsert = [];
+        const uniquePhones = new Set(); 
+
+        const userRole = (req.user?.role || '').toLowerCase();
+        const isAdmin = ['system admin', 'admin', 'director', 'manager', 'superadmin'].includes(userRole);
+        const targetAssignee = !isAdmin ? parseInt(req.user.id) : null;
 
         for (let c of contacts) {
             let phone = c.phoneNumber?.replace(/\D/g, '');
             if (phone && phone.startsWith('0')) phone = '94' + phone.substring(1);
 
-            if (phone && phone.length >= 9 && !existingPhones.has(phone) && !uniqueIncomingPhones.has(phone)) {
-                uniqueIncomingPhones.add(phone);
-                newContactsToInsert.push({
-                    phone_number: phone, 
-                    customer_name: c.name || `Guest ${phone.slice(-4)}`,
-                    unread_count: 0, 
-                    status: 'Imported',
-                    last_message_time: new Date()
-                });
+            if (phone && phone.length >= 9 && !uniquePhones.has(phone)) {
+                uniquePhones.add(phone);
+                const guestName = c.name || `Guest ${phone.slice(-4)}`;
+
+                if (!existingWaPhones.has(phone)) {
+                    newWaToInsert.push({
+                        phone_number: phone, 
+                        customer_name: guestName,
+                        unread_count: 0, 
+                        status: targetAssignee ? 'Assigned' : 'Imported',
+                        assigned_to: targetAssignee ? BigInt(targetAssignee) : null,
+                        last_message_time: new Date()
+                    });
+                }
+
+                if (!existingCallPhones.has(phone)) {
+                    newCallToInsert.push({
+                        fName: guestName,
+                        phone: phone,
+                        leadType: 'Free Seminar',
+                        source: 'Bulk Import',
+                        status: targetAssignee ? 'PHASE_1' : 'NEW',
+                        assigned_to: targetAssignee
+                    });
+                }
             }
         }
 
-        if (newContactsToInsert.length === 0) return res.status(200).json({ message: "No new contacts were added." });
+        if (newWaToInsert.length > 0) await prisma.whatsapp_leads.createMany({ data: newWaToInsert, skipDuplicates: true });
+        if (newCallToInsert.length > 0) await prisma.leads.createMany({ data: newCallToInsert, skipDuplicates: true });
 
-        await prisma.whatsapp_leads.createMany({ data: newContactsToInsert, skipDuplicates: true });
-        return res.status(201).json({ message: `${newContactsToInsert.length} Contacts imported successfully` });
+        return res.status(201).json({ message: `Contacts imported successfully` });
     } catch (err) {
         return res.status(500).json({ message: "Failed to perform bulk import. " + err.message });
     }
@@ -165,11 +207,8 @@ router.post('/auto-assign', protect, async (req, res) => {
     }
 });
 
-// 🔥 FIX: ADDED MISSING ROUTES FOR USER TOOLS (Broadcast & Templates) 🔥
 router.get('/broadcast', protect, async (req, res) => {
     try {
-        // Return an empty array for now just to stop the 404/JSON parsing error.
-        // You can link this to your actual broadcast logs table later if you have one.
         res.status(200).json([]);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -177,12 +216,10 @@ router.get('/broadcast', protect, async (req, res) => {
 });
 
 router.post('/broadcast/send-24h', protect, async (req, res) => {
-    // Mock response for sending broadcast
     res.status(200).json({ message: "Broadcast sent successfully to selected active users!" });
 });
 
 router.post('/broadcast/create', protect, async (req, res) => {
-    // Mock response for scheduling a campaign
     res.status(200).json({ message: "Campaign scheduled successfully!" });
 });
 
@@ -196,7 +233,7 @@ router.get('/templates', protect, async (req, res) => {
             id: t.id,
             name: t.title,
             message: t.message,
-            status: "APPROVED" // Fake status for UI
+            status: "APPROVED"
         }));
         
         res.status(200).json(formatted);

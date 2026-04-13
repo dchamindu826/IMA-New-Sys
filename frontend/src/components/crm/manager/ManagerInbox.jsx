@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Layers, Users, RefreshCw, X, Upload } from 'lucide-react';
-import { API_BASE_URL } from "../../config";
-import ContactSidebar from "./ContactSidebar";
-import ChatArea from "./ChatArea";
-import CampaignSidebar from "./RightPanel"; 
-import ChatModals from "./ChatModals"; 
+import { API_BASE_URL } from "../../../config";
+import ContactSidebar from "./ManagerContactSidebar";
+import ChatArea from "./ManagerChatArea";
+import CampaignSidebar from "./ManagerRightPanel"; 
+import ChatModals from "../ChatModals"; 
 import ManagerAssignModal from "./ManagerAssignModal";
 import toast from 'react-hot-toast';
-import api from '../../api/axios'; 
+import api from '../../../api/axios'; 
 
 const getToken = () => localStorage.getItem('token') || localStorage.getItem('userToken') || localStorage.getItem('jwt');
 

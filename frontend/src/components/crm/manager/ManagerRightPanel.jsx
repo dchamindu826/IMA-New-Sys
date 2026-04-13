@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { User, BookOpen, Lock, Mail, Phone, AlertCircle, UserPlus, LogIn, X } from 'lucide-react';
-import api from '../../api/axios';
+import api from '../../../api/axios';
 
 export default function RightPanel({ selectedContact, loggedInUser }) {
   const [lmsData, setLmsData] = useState(null);

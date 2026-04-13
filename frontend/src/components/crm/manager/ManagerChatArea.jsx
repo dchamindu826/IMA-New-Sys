@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Paperclip, Zap, Send, Mic, X, StopCircle, Trash2, MessageSquare, Loader, FileText, Play, Download, ClipboardList, CheckCheck, Reply, PlusCircle, LayoutTemplate, Image as ImageIcon } from 'lucide-react';
-import { API_BASE_URL } from "../../config";
+import { API_BASE_URL } from "../../../config";
 
 const FONT_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl'];
 const getToken = () => localStorage.getItem('token') || localStorage.getItem('userToken');

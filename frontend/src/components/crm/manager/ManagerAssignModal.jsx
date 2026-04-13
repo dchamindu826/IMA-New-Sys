@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { API_BASE_URL } from "../../config";
+import { API_BASE_URL } from "../../../config";
 import { X, Save, Trash2, PlusCircle, Play } from 'lucide-react';
 
 export default function ManagerAssignModal({ onClose, selectedBatch }) {

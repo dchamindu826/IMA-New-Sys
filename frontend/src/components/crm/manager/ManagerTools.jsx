@@ -5,7 +5,7 @@ import {
     Loader, RefreshCw, Clock, CheckCircle, XCircle, LayoutTemplate, Zap 
 } from 'lucide-react';
 // 🔥 FIX: Path එක හරියටම හැදුවා 🔥
-import { API_BASE_URL } from "../../config";
+import { API_BASE_URL } from "../../../config";
 
 const UserTools = ({ isEmbedded = false, activePhase = 'FREE', selectedBiz = null }) => {
   const CLOUD_NAME = "dyixoaldi"; 

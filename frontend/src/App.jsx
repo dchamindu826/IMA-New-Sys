@@ -25,7 +25,7 @@ import PaymentHub from './pages/admin/PaymentHub';
 import StaffManager from './pages/admin/StaffManager';
 import BatchManager from './pages/admin/BatchManager';
 import AdminCrmSetup from './pages/admin/AdminCrmSetup'; 
-import UserInbox from './components/crm/UserInbox';
+import UserInbox from './components/crm/manager/ManagerInbox';
 import StudentManager from './pages/admin/StudentManager';
 
 // --- Manager Pages ---
@@ -101,8 +101,8 @@ function App() {
           <Route path="admin/coordinator-tasks" element={<CoordinatorTasks />} />
           <Route path="admin/student-manager" element={<StudentManager loggedInUser={loggedInUser} />} />
           
-          {/* Admin CRM Tools */}
-          <Route path="admin/staff-crm" element={<ManagerCRM loggedInUser={loggedInUser} />} />
+          {/* 🔥 FIX: මෙතන ManagerCRM වෙනුවට StaffCRM දැම්මා 🔥 */}
+          <Route path="admin/staff-crm" element={<StaffCRM loggedInUser={loggedInUser} />} />
           <Route path="admin/crm-setup" element={<AdminCrmSetup />} />
 
           <Route path="manager/dashboard" element={<ManagerDashboard />} />

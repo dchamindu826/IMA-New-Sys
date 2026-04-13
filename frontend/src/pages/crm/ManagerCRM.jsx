@@ -3,8 +3,8 @@ import { MessageSquare, Users, Settings, Activity, Send, Building2 } from 'lucid
 import axios from 'axios';
 import { API_BASE_URL } from '../../config';
 
-import UserInbox from '../../components/crm/UserInbox';
-import UserTools from '../../components/crm/UserTools'; 
+import UserInbox from '../../components/crm/manager/ManagerInbox';
+import UserTools from "../../components/crm/manager/ManagerTools";
 import AgentStats from '../../components/crm/AgentStats'; 
 import AdminCrmSetup from '../admin/AdminCrmSetup';
 

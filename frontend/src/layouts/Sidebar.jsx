@@ -2,12 +2,11 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
     LayoutDashboard, Users, PieChart, CalendarDays, ListTodo, MonitorPlay, 
-    CreditCard, MessageSquare, PhoneCall, Banknote, BookOpen, LogOut 
+    CreditCard, MessageSquare, PhoneCall, Banknote, BookOpen, LogOut, HeadphonesIcon 
 } from 'lucide-react';
 
 export default function Sidebar({ userRole, loggedInUser, handleLogout, currentBg, setBgImage }) {
   
-  // 🔥 FIX: Clock (Time) එක සම්පූර්ණයෙන්ම අයින් කරා. බ්‍රව්සර් එක Freeze වෙන්නේ නෑ! 🔥
   const displayName = loggedInUser?.fName || 'System Admin';
   const roleName = loggedInUser?.role || 'Admin';
 
@@ -38,7 +37,7 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
         <img src="/logo.png" alt="Logo" className="w-48 h-auto object-contain drop-shadow-2xl" />
       </div>
 
-      {/* 2. USER PROFILE SECTION (No Clock) */}
+      {/* 2. USER PROFILE SECTION */}
       <div className="mx-4 mb-4 bg-slate-900/50 border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center shrink-0 shadow-inner">
         <h3 className="text-white font-bold text-base truncate w-full text-center tracking-wide">Hello, {displayName}</h3>
         <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
@@ -73,9 +72,9 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
             <NavLink to="/manager/timetable" className={getNavLinkClass}><CalendarDays size={18} /> Master Timetable</NavLink>
             <NavLink to="/manager/tasks" className={getNavLinkClass}><ListTodo size={18} /> Workflow & Tasks</NavLink>
             <NavLink to="/admin/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Content Hub</NavLink>
-            <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> WhatsApp CRM</NavLink>
+            <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> Manager CRM</NavLink>
             <NavLink to="/admin/coordinator-tasks" className={getNavLinkClass}><ListTodo size={18} /> Staff Tasks View</NavLink>
-            <NavLink to="/admin/staff-crm" className={getNavLinkClass}><PhoneCall size={18} /> Global Staff CRM</NavLink>
+            <NavLink to="/admin/staff-crm" className={getNavLinkClass}><HeadphonesIcon size={18} /> Staff CRM (Agents)</NavLink>
             
             <div className="text-[10px] uppercase font-black text-slate-500 mt-3 mb-1 pl-2 tracking-widest">Finance Dept</div>
             <NavLink to="/admin/payments" className={getNavLinkClass}><Banknote size={18} /> Payment Hub</NavLink>
@@ -91,7 +90,7 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
              <NavLink to="/manager/tasks" className={getNavLinkClass}><ListTodo size={18} /> Workflow & Tasks</NavLink>
              <NavLink to="/manager/payments" className={getNavLinkClass}><CreditCard size={18} /> Finance & Payments</NavLink>
              <NavLink to="/manager/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Content Hub</NavLink>
-             <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> WhatsApp CRM</NavLink>
+             <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> Manager CRM</NavLink>
            </>
         )}
 
@@ -108,7 +107,8 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
              <NavLink to="/coordinator/dashboard" className={getNavLinkClass}><LayoutDashboard size={18} /> My Overview</NavLink>
              <NavLink to="/coordinator/my-tasks" className={getNavLinkClass}><ListTodo size={18} /> My Tasks</NavLink>
              <NavLink to="/coordinator/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Manage Content</NavLink>
-             <NavLink to="/staff/crm" className={getNavLinkClass}><PhoneCall size={18} /> Call Campaign (CRM)</NavLink>
+             {/* 🔥 STAFF CRM නම පැහැදිලිව වෙනස් කළා 🔥 */}
+             <NavLink to="/staff/crm" className={getNavLinkClass}><HeadphonesIcon size={18} /> Staff CRM</NavLink>
            </>
         )}
 

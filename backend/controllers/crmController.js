@@ -5,6 +5,42 @@ const prisma = new PrismaClient();
 const safeJson = (data) => JSON.parse(JSON.stringify(data, (key, value) => typeof value === 'bigint' ? value.toString() : value));
 
 // ==========================================
+// GET CONTACTS (WhatsApp Inbox - Manager vs Staff Separation)
+// ==========================================
+const getContacts = async (req, res) => {
+    try {
+        const userRole = (req.user.role || '').toLowerCase().trim();
+        const userId = parseInt(req.user.id);
+        const isAdmin = ['system admin', 'admin', 'director', 'manager', 'superadmin'].includes(userRole);
+
+        let whereClause = {};
+
+        // 🔥 Staff කෙනෙක් නම්, එයාට Assigned වෙච්ච ඒවා විතරයි පෙන්වන්නේ 🔥
+        if (!isAdmin) {
+            whereClause.assigned_to = userId;
+        }
+
+        const contactsList = await prisma.whatsapp_leads.findMany({
+            where: whereClause,
+            orderBy: { last_message_time: 'desc' }
+        });
+        
+        const formatted = contactsList.map(c => ({
+            ...c,
+            id: c.id.toString(),
+            name: c.customer_name || c.phone_number,
+            phone_number: c.phone_number,
+            unread_count: c.unread_count || 0
+        }));
+
+        res.status(200).json(safeJson(formatted));
+    } catch (error) {
+        console.error("Get Contacts Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// ==========================================
 // 1. MANUAL BULK ASSIGNMENT (Manager Action)
 // ==========================================
 const assignLeadsManual = async (req, res) => {
@@ -175,6 +211,7 @@ const getStaffLeads = async (req, res) => {
 };
 
 module.exports = {
+    getContacts,
     assignLeadsManual,
     processAutoAssignment,
     updateCallLog,
