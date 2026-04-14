@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, Users, Layers, TrendingUp, Building2, UserPlus, Trash2 } from 'lucide-react';
+import { Loader2, Users, Layers, TrendingUp, Building2, UserPlus, Trash2, UserCheck, Briefcase } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts';
 import api from '../../api/axios';
 
@@ -56,7 +56,6 @@ export default function ManagerDashboard() {
       fetchAssignedStaff();
   }, [selectedBatch]);
 
-  // Handle Staff Assignment
   const handleAssignStaff = async (staffId) => {
       try {
           await api.post('/tasks/manager/batch-staff/assign', { batchId: selectedBatch, staffId });
@@ -66,7 +65,6 @@ export default function ManagerDashboard() {
       } catch(e) { toast.error("Assignment failed"); }
   };
 
-  // Handle Staff Removal
   const handleRemoveStaff = async (staffId) => {
       if(!window.confirm("Remove this staff from the batch?")) return;
       try {
@@ -85,7 +83,7 @@ export default function ManagerDashboard() {
           <div className="flex h-full flex-col items-center justify-center text-center p-10 animate-in fade-in zoom-in duration-500">
             <Building2 size={80} className="text-red-500 mb-6 drop-shadow-lg opacity-50" />
             <h2 className="text-3xl font-bold text-white mb-2">Backend Connection Failed</h2>
-            <p className="text-slate-400">Could not connect to the Backend API. Please check your Node.js server.</p>
+            <p className="text-slate-400">Could not connect to the Backend API.</p>
           </div>
         );
   }
@@ -95,7 +93,7 @@ export default function ManagerDashboard() {
       <div className="flex h-full flex-col items-center justify-center text-center p-10 animate-in fade-in zoom-in duration-500">
         <Building2 size={80} className="text-slate-600 mb-6 drop-shadow-lg" />
         <h2 className="text-3xl font-bold text-white mb-2">No Business Assigned</h2>
-        <p className="text-slate-400">You have not been assigned to manage any business yet. Please contact the System Admin.</p>
+        <p className="text-slate-400">You have not been assigned to manage any business yet.</p>
       </div>
     );
   }
@@ -104,51 +102,72 @@ export default function ManagerDashboard() {
     <div className="w-full text-slate-200 animate-in fade-in duration-500 relative h-full overflow-y-auto pb-10 custom-scrollbar pr-2">
       
       {/* Top Header with Logo */}
-      <div className="bg-slate-800/40 border border-white/10 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-6 mb-8">
-        <div className="w-24 h-24 bg-slate-900/60 rounded-2xl flex items-center justify-center border border-white/10 shadow-inner overflow-hidden p-2">
+      <div className="bg-gradient-to-r from-slate-900/80 to-slate-800/80 border border-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-2xl flex items-center gap-6 mb-8 relative overflow-hidden">
+        {/* Decorative Blur */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-500/20 blur-3xl rounded-full pointer-events-none"></div>
+        
+        <div className="w-24 h-24 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 shadow-inner overflow-hidden p-2 z-10">
             {data?.business?.logo ? (
                 <img src={`http://72.62.249.211:5000/storage/icons/${data.business.logo}`} alt="Logo" className="w-full h-full object-contain drop-shadow-md"/>
             ) : (
-                <Building2 size={40} className="text-blue-300" />
+                <Briefcase size={40} className="text-blue-300" />
             )}
         </div>
-        <div>
-          <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1 block">Assigned Institute</span>
+        <div className="z-10">
+          <span className="text-[11px] font-bold text-blue-400 uppercase tracking-widest mb-1 block bg-blue-500/10 w-max px-2 py-0.5 rounded">Assigned Business</span>
           <h2 className="text-4xl font-black text-white drop-shadow-md tracking-wide">{data?.business?.name || 'Unknown Business'}</h2>
-          <p className="text-slate-400 mt-1 text-sm font-medium">Category: {data?.business?.category || 'N/A'}</p>
+          <p className="text-slate-400 mt-1 text-sm font-medium flex items-center gap-2">
+            <Layers size={14} /> Category: {data?.business?.category || 'N/A'}
+          </p>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/20 border border-blue-500/20 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-5">
-            <div className="w-14 h-14 bg-blue-500/20 rounded-2xl flex items-center justify-center text-blue-400"><Layers size={28}/></div>
+      {/* Supiri Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        
+        {/* Batches Card */}
+        <div className="bg-gradient-to-br from-blue-900/50 to-blue-800/20 border border-blue-500/20 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-5 hover:border-blue-400/50 transition-all group">
+            <div className="w-14 h-14 bg-blue-500/20 rounded-2xl flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform"><Layers size={28}/></div>
             <div>
                 <p className="text-[11px] font-bold text-blue-300 uppercase tracking-widest mb-1">Total Batches</p>
                 <h3 className="text-3xl font-bold text-white">{data?.stats?.totalBatches || 0}</h3>
             </div>
         </div>
-        <div className="bg-gradient-to-br from-purple-900/40 to-purple-800/20 border border-purple-500/20 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-5">
-            <div className="w-14 h-14 bg-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400"><Users size={28}/></div>
+
+        {/* Students Card */}
+        <div className="bg-gradient-to-br from-purple-900/50 to-purple-800/20 border border-purple-500/20 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-5 hover:border-purple-400/50 transition-all group">
+            <div className="w-14 h-14 bg-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform"><Users size={28}/></div>
             <div>
                 <p className="text-[11px] font-bold text-purple-300 uppercase tracking-widest mb-1">Enrolled Students</p>
                 <h3 className="text-3xl font-bold text-white">{data?.stats?.totalStudents || 0}</h3>
             </div>
         </div>
-        <div className="bg-gradient-to-br from-emerald-900/40 to-emerald-800/20 border border-emerald-500/20 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-5">
-            <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center text-emerald-400"><TrendingUp size={28}/></div>
+
+        {/* Staff Card (NEW) */}
+        <div className="bg-gradient-to-br from-amber-900/50 to-amber-800/20 border border-amber-500/20 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-5 hover:border-amber-400/50 transition-all group">
+            <div className="w-14 h-14 bg-amber-500/20 rounded-2xl flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform"><UserCheck size={28}/></div>
             <div>
-                <p className="text-[11px] font-bold text-emerald-300 uppercase tracking-widest mb-1">Total Revenue</p>
-                <h3 className="text-3xl font-bold text-white">Rs. {data?.stats?.totalRevenue?.toLocaleString() || '0'}</h3>
+                <p className="text-[11px] font-bold text-amber-300 uppercase tracking-widest mb-1">Business Staff</p>
+                <h3 className="text-3xl font-bold text-white">{allStaff.length || 0}</h3>
             </div>
         </div>
+
+        {/* Revenue Card */}
+        <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-800/20 border border-emerald-500/20 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex items-center gap-5 hover:border-emerald-400/50 transition-all group">
+            <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform"><TrendingUp size={28}/></div>
+            <div>
+                <p className="text-[11px] font-bold text-emerald-300 uppercase tracking-widest mb-1">Total Revenue</p>
+                <h3 className="text-2xl font-bold text-white">Rs. {data?.stats?.totalRevenue?.toLocaleString() || '0'}</h3>
+            </div>
+        </div>
+
       </div>
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Bar Chart */}
-        <div className="bg-slate-800/40 border border-white/10 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex flex-col">
-          <h3 className="text-sm font-bold text-white tracking-wide mb-6">Revenue Generation by Batch</h3>
+        <div className="bg-slate-900/60 border border-white/10 backdrop-blur-xl p-6 rounded-3xl shadow-2xl flex flex-col">
+          <h3 className="text-sm font-bold text-white tracking-wide mb-6 flex items-center gap-2"><TrendingUp size={16} className="text-blue-400"/> Revenue Generation by Batch</h3>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.revenueData || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -159,7 +178,7 @@ export default function ManagerDashboard() {
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#3B82F6" stopOpacity={1}/>
-                    <stop offset="100%" stopColor="#2563EB" stopOpacity={0.6}/>
+                    <stop offset="100%" stopColor="#1E3A8A" stopOpacity={0.6}/>
                   </linearGradient>
                 </defs>
               </BarChart>
@@ -168,8 +187,8 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Area Chart */}
-        <div className="bg-slate-800/40 border border-white/10 backdrop-blur-xl p-6 rounded-3xl shadow-xl flex flex-col">
-          <h3 className="text-sm font-bold text-white tracking-wide mb-6">Student Enrollment Trends</h3>
+        <div className="bg-slate-900/60 border border-white/10 backdrop-blur-xl p-6 rounded-3xl shadow-2xl flex flex-col">
+          <h3 className="text-sm font-bold text-white tracking-wide mb-6 flex items-center gap-2"><Users size={16} className="text-purple-400"/> Student Enrollment Trends</h3>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data?.revenueData || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -179,8 +198,8 @@ export default function ManagerDashboard() {
                 <Area type="monotone" dataKey="revenue" stroke="#A78BFA" strokeWidth={3} fill="url(#colorStudents)" />
                 <defs>
                   <linearGradient id="colorStudents" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#A78BFA" stopOpacity={0.5}/>
-                    <stop offset="95%" stopColor="#A78BFA" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#A78BFA" stopOpacity={0.6}/>
+                    <stop offset="95%" stopColor="#4C1D95" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
               </AreaChart>
@@ -189,11 +208,11 @@ export default function ManagerDashboard() {
         </div>
       </div>
 
-      {/* 🔥 NEW: Batch Staff Assignment Section 🔥 */}
-      <div className="bg-slate-800/40 border border-white/10 backdrop-blur-xl rounded-3xl shadow-xl flex flex-col p-6 w-full">
-          <div className="flex justify-between items-center bg-black/20 p-4 rounded-2xl border border-white/5 mb-6">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2"><Users size={20}/> Batch Workflow Assignment</h3>
-              <select className="bg-black/50 border border-blue-500/30 text-white rounded-xl px-4 py-2 outline-none min-w-[250px]" value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)}>
+      {/* Batch Workflow Assignment Section */}
+      <div className="bg-slate-900/60 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl flex flex-col p-6 w-full">
+          <div className="flex justify-between items-center bg-black/30 p-4 rounded-2xl border border-white/5 mb-6">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2"><Users size={20} className="text-emerald-400"/> Batch Workflow Assignment</h3>
+              <select className="bg-slate-800 border border-emerald-500/30 text-white rounded-xl px-4 py-2 outline-none min-w-[250px] shadow-lg" value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)}>
                 {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
           </div>
@@ -201,14 +220,14 @@ export default function ManagerDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Assigned Staff */}
               <div>
-                  <h4 className="text-sm font-bold text-emerald-300 uppercase tracking-widest mb-4">Assigned Staff (Coordinators)</h4>
-                  <div className="space-y-3 bg-black/10 p-4 rounded-2xl min-h-[300px] border border-white/5">
+                  <h4 className="text-sm font-bold text-emerald-300 uppercase tracking-widest mb-4 flex items-center gap-2"><UserCheck size={16}/> Assigned Coordinators</h4>
+                  <div className="space-y-3 bg-black/20 p-4 rounded-2xl min-h-[300px] border border-white/5 shadow-inner">
                       {assignedStaff.length === 0 ? <p className="text-xs text-slate-400 text-center mt-10">No staff assigned to this batch yet.</p> : 
                           assignedStaff.map(staff => (
-                              <div key={staff.id} className="flex justify-between items-center bg-black/40 border border-emerald-500/20 p-3 rounded-xl">
+                              <div key={staff.id} className="flex justify-between items-center bg-slate-800/80 border border-emerald-500/20 p-3 rounded-xl hover:border-emerald-500/50 transition-all">
                                   <div>
                                       <p className="text-sm font-bold text-white">{staff.fName} {staff.lName}</p>
-                                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Coordinator</span>
+                                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 mt-1 inline-block">Coordinator</span>
                                   </div>
                                   <button onClick={() => handleRemoveStaff(staff.id)} className="text-slate-500 hover:text-red-400 bg-white/5 hover:bg-red-500/10 p-2 rounded-lg transition-all"><Trash2 size={16}/></button>
                               </div>
@@ -219,15 +238,15 @@ export default function ManagerDashboard() {
 
               {/* Available Staff List */}
               <div>
-                  <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Available Staff</h4>
-                  <div className="space-y-3 bg-black/10 p-4 rounded-2xl min-h-[300px] border border-white/5 max-h-[400px] overflow-y-auto custom-scrollbar">
+                  <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><UserPlus size={16}/> Available Staff</h4>
+                  <div className="space-y-3 bg-black/20 p-4 rounded-2xl min-h-[300px] border border-white/5 shadow-inner max-h-[400px] overflow-y-auto custom-scrollbar">
                       {allStaff.filter(s => !assignedStaff.find(a => a.id === s.id)).map(staff => (
-                          <div key={staff.id} className="flex justify-between items-center bg-black/30 border border-white/10 p-3 rounded-xl hover:border-blue-500/30 transition-all">
+                          <div key={staff.id} className="flex justify-between items-center bg-slate-800/80 border border-white/10 p-3 rounded-xl hover:border-blue-500/30 transition-all">
                               <div>
                                   <p className="text-sm font-bold text-white">{staff.fName} {staff.lName}</p>
-                                  <span className="text-[10px] text-slate-400">{staff.role}</span>
+                                  <span className="text-[10px] text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded mt-1 inline-block border border-blue-500/20">{staff.role}</span>
                               </div>
-                              <button onClick={() => handleAssignStaff(staff.id)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all">
+                              <button onClick={() => handleAssignStaff(staff.id)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all shadow-md">
                                   <UserPlus size={14}/> Assign
                               </button>
                           </div>

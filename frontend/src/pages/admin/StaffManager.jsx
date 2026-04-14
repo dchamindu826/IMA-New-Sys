@@ -30,12 +30,24 @@ export default function StaffManager() {
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/admin/staff/add', newStaff); 
+      const formData = new FormData();
+      formData.append('fName', newStaff.fName);
+      formData.append('lName', newStaff.lName);
+      formData.append('phone', newStaff.phone);
+      formData.append('nic', newStaff.nic);
+      formData.append('role', newStaff.role);
+      formData.append('password', newStaff.password);
+
+      await api.post('/admin/staff/add', formData); 
+      
       toast.success("Staff registered successfully!");
       setNewStaff({ fName: '', lName: '', phone: '', nic: '', role: 'Coordinator', password: '' });
       fetchStaff();
     } catch (error) {
-      toast.error("Failed to register staff.");
+      // 🔥 Backend eken ena aththa message eka allaganna
+      const errorMessage = error.response?.data?.message || "Failed to register staff.";
+      toast.error(errorMessage); // Eka screen eke pennanna
+      console.error(error);
     }
   };
 

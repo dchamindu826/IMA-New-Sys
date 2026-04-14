@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
     LayoutDashboard, Users, PieChart, CalendarDays, ListTodo, MonitorPlay, 
-    CreditCard, MessageSquare, PhoneCall, Banknote, BookOpen, LogOut, HeadphonesIcon 
+    CreditCard, MessageSquare, PhoneCall, Banknote, BookOpen, LogOut, HeadphonesIcon, TrendingUp 
 } from 'lucide-react';
 
 export default function Sidebar({ userRole, loggedInUser, handleLogout, currentBg, setBgImage }) {
@@ -73,6 +73,10 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
             <NavLink to="/manager/tasks" className={getNavLinkClass}><ListTodo size={18} /> Workflow & Tasks</NavLink>
             <NavLink to="/admin/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Content Hub</NavLink>
             <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> Manager CRM</NavLink>
+            
+            {/* 🔥 NEW: Admin Analytics Menu 🔥 */}
+            <NavLink to="/admin/staff-progress" className={getNavLinkClass}><TrendingUp size={18} /> Analytics & Progress</NavLink>
+            
             <NavLink to="/admin/coordinator-tasks" className={getNavLinkClass}><ListTodo size={18} /> Staff Tasks View</NavLink>
             <NavLink to="/admin/staff-crm" className={getNavLinkClass}><HeadphonesIcon size={18} /> Staff CRM (Agents)</NavLink>
             
@@ -88,6 +92,10 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
              <NavLink to="/manager/timetable" className={getNavLinkClass}><CalendarDays size={18} /> Master Timetable</NavLink>
              <NavLink to="/manager/staff" className={getNavLinkClass}><Users size={18} /> My Team (Staff)</NavLink>
              <NavLink to="/manager/tasks" className={getNavLinkClass}><ListTodo size={18} /> Workflow & Tasks</NavLink>
+             
+             {/* 🔥 NEW: Manager Analytics Menu 🔥 */}
+             <NavLink to="/manager/staff-progress" className={getNavLinkClass}><TrendingUp size={18} /> Call Campaigns Progress</NavLink>
+             
              <NavLink to="/manager/payments" className={getNavLinkClass}><CreditCard size={18} /> Finance & Payments</NavLink>
              <NavLink to="/manager/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Content Hub</NavLink>
              <NavLink to="/manager/crm" className={getNavLinkClass}><MessageSquare size={18} /> Manager CRM</NavLink>
@@ -107,7 +115,6 @@ export default function Sidebar({ userRole, loggedInUser, handleLogout, currentB
              <NavLink to="/coordinator/dashboard" className={getNavLinkClass}><LayoutDashboard size={18} /> My Overview</NavLink>
              <NavLink to="/coordinator/my-tasks" className={getNavLinkClass}><ListTodo size={18} /> My Tasks</NavLink>
              <NavLink to="/coordinator/content-hub" className={getNavLinkClass}><MonitorPlay size={18} /> Manage Content</NavLink>
-             {/* 🔥 STAFF CRM නම පැහැදිලිව වෙනස් කළා 🔥 */}
              <NavLink to="/staff/crm" className={getNavLinkClass}><HeadphonesIcon size={18} /> Staff CRM</NavLink>
            </>
         )}

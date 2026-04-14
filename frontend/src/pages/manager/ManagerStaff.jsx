@@ -6,6 +6,7 @@ import api from '../../api/axios';
 export default function ManagerStaff() {
   const [staffList, setStaffList] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [businessId, setBusinessId] = useState(null); // 🔥 New: Business ID eka save karaganna
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   
@@ -18,14 +19,19 @@ export default function ManagerStaff() {
 
   const fetchData = async () => {
     try {
-      // 1. Staff ටික ගන්නවා
+      // 1. Manager ge business ID eka gannawa (API eken overview eka haraha)
+      const overviewRes = await api.get('/admin/manager/overview');
+      if(overviewRes.data && overviewRes.data.business) {
+          setBusinessId(overviewRes.data.business.id);
+      }
+
+      // 2. Staff List eka gannawa
       const res = await api.get('/admin/staff');
       let actualData = res.data?.data || res.data?.staff || res.data || [];
-      // Manager ට පේන්න ඕනේ Ass Manager සහ Coordinator විතරයි
       const filteredForManager = actualData.filter(s => s.role === 'Ass Manager' || s.role === 'Coordinator');
       setStaffList(filteredForManager);
 
-      // 2. Manager ගේ Batches ටික ගන්නවා (Dropdown එකට)
+      // 3. Batches Dropdown ekata gannawa
       const batchRes = await api.get('/admin/manager/batches');
       setBatches(batchRes.data || []);
       
@@ -38,19 +44,37 @@ export default function ManagerStaff() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
+      // FormData eken thama backend ekata yawanne
+      const sendData = new FormData();
+      sendData.append('fName', formData.fName);
+      sendData.append('lName', formData.lName);
+      sendData.append('phone', formData.phone);
+      sendData.append('nic', formData.nic);
+      sendData.append('role', formData.role);
+      sendData.append('password', formData.password);
+      if(formData.assigned_batch_id) sendData.append('assigned_batch_id', formData.assigned_batch_id);
+      
+      // 🔥 Meka thama wede: Thamange Business ID eka pass karanawa
+      if(businessId) {
+          sendData.append('business_id', businessId);
+      }
+
       if (editingStaff) {
-        await api.put(`/admin/staff/update/${editingStaff.id}`, formData);
+        // Backend eke update route eka normal JSON bala poroththu wena nisa formData nathiwa kelinma yawamu
+        await api.put(`/admin/staff/update/${editingStaff.id}`, { ...formData, business_id: businessId });
         toast.success("Staff updated successfully!");
       } else {
-        await api.post('/admin/staff/add', formData);
-        toast.success("Staff registered successfully!");
+        await api.post('/admin/staff/add', sendData);
+        toast.success("Staff registered successfully under your business!");
       }
+      
       setShowModal(false);
       setFormData({ fName: '', lName: '', phone: '', nic: '', role: 'Coordinator', password: '', assigned_batch_id: '' });
       setEditingStaff(null);
       fetchData();
     } catch (error) {
-      toast.error(editingStaff ? "Failed to update." : "Failed to register.");
+      const errMsg = error.response?.data?.message || "Failed to save.";
+      toast.error(errMsg);
     }
   };
 
@@ -77,32 +101,32 @@ export default function ManagerStaff() {
 
   return (
     <div className="w-full text-slate-200 animate-in fade-in duration-300 relative h-full flex flex-col">
-      <div className="mb-6 flex justify-between items-end">
+      <div className="mb-6 flex justify-between items-end bg-slate-900/50 p-6 rounded-3xl border border-white/10 backdrop-blur-md">
         <div>
-          <h2 className="text-3xl font-bold text-white drop-shadow-md">My Team</h2>
-          <p className="text-slate-300 text-sm mt-1">Manage Assistant Managers and Coordinators for your institute.</p>
+          <h2 className="text-3xl font-black text-white drop-shadow-md">My Business Team</h2>
+          <p className="text-slate-400 text-sm mt-1">Manage Assistant Managers and Coordinators strictly for your business.</p>
         </div>
         <div className="flex gap-4">
             <div className="relative w-64">
-                <Search size={16} className="absolute left-3 top-2.5 text-slate-300" />
-                <input type="text" placeholder="Search team..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full bg-slate-400/10 border border-slate-400/20 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:border-blue-400 outline-none backdrop-blur-md placeholder-slate-400 transition-all" />
+                <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                <input type="text" placeholder="Search team..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full bg-black/40 border border-slate-600/50 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:border-blue-400 outline-none backdrop-blur-md transition-all shadow-inner" />
             </div>
-            <button onClick={() => { setEditingStaff(null); setFormData({ fName: '', lName: '', phone: '', nic: '', role: 'Coordinator', password: '', assigned_batch_id: '' }); setShowModal(true); }} className="bg-blue-600/80 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-lg backdrop-blur-md transition-all">
-                <UserPlus size={16} /> Add Staff
+            <button onClick={() => { setEditingStaff(null); setFormData({ fName: '', lName: '', phone: '', nic: '', role: 'Coordinator', password: '', assigned_batch_id: '' }); setShowModal(true); }} className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all">
+                <UserPlus size={16} /> Add Business Staff
             </button>
         </div>
       </div>
 
       {/* Staff List */}
-      <div className="bg-slate-400/10 backdrop-blur-xl border border-slate-400/20 rounded-3xl shadow-2xl overflow-hidden flex-1">
-        <div className="p-0 overflow-x-auto">
+      <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex-1 p-1">
+        <div className="p-0 overflow-x-auto rounded-3xl">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-900/40 text-blue-200 border-b border-white/10">
+            <thead className="bg-slate-800/80 text-blue-200 border-b border-white/10">
               <tr>
-                <th className="p-5 font-semibold">Name</th>
-                <th className="p-5 font-semibold">Contact</th>
-                <th className="p-5 font-semibold">Role & Assignment</th>
-                <th className="p-5 font-semibold text-right">Actions</th>
+                <th className="p-5 font-bold uppercase tracking-wider text-xs">Staff Name</th>
+                <th className="p-5 font-bold uppercase tracking-wider text-xs">Contact Info</th>
+                <th className="p-5 font-bold uppercase tracking-wider text-xs">Role & Assignment</th>
+                <th className="p-5 font-bold uppercase tracking-wider text-xs text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -110,27 +134,28 @@ export default function ManagerStaff() {
                filteredStaff.map((s) => (
                 <tr key={s.id} className="hover:bg-white/5 transition-colors">
                   <td className="p-5 font-medium text-white flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 flex items-center justify-center font-bold text-xs">{s.fName?.charAt(0)}{s.lName?.charAt(0)}</div>
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold text-xs shadow-lg">{s.fName?.charAt(0)}{s.lName?.charAt(0)}</div>
                       {s.fName} {s.lName}
                   </td>
-                  <td className="p-5 text-slate-300">{s.phone} <br/><span className="text-xs text-slate-400">{s.nic}</span></td>
+                  <td className="p-5 text-slate-300">{s.phone} <br/><span className="text-[11px] text-slate-500 bg-white/5 px-2 py-0.5 rounded mt-1 inline-block">{s.nic}</span></td>
                   <td className="p-5">
-                      <span className={`px-3 py-1 rounded-lg text-xs font-bold border shadow-sm ${s.role === 'Coordinator' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-purple-500/20 text-purple-300 border-purple-500/30'}`}>
-                          {s.role === 'Coordinator' ? <Users size={12} className="inline mr-1"/> : <UserCircle size={12} className="inline mr-1"/>}
+                      <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border shadow-sm ${s.role === 'Coordinator' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-purple-500/20 text-purple-300 border-purple-500/30'}`}>
+                          {s.role === 'Coordinator' ? <Users size={12} className="inline mr-1 mb-0.5"/> : <UserCircle size={12} className="inline mr-1 mb-0.5"/>}
                           {s.role}
                       </span>
                       {s.role === 'Coordinator' && s.assigned_batch_id && (
-                          <div className="mt-2 text-xs text-blue-300 bg-blue-500/10 px-2 py-1 rounded w-max border border-blue-500/20">
-                              Batch Assigned: {batches.find(b => b.id === s.assigned_batch_id?.toString())?.name || `ID: ${s.assigned_batch_id}`}
+                          <div className="mt-2 text-[10px] font-semibold text-blue-300 bg-blue-500/10 px-2 py-1 rounded w-max border border-blue-500/20">
+                              Assigned: {batches.find(b => b.id === s.assigned_batch_id?.toString())?.name || `Batch ID: ${s.assigned_batch_id}`}
                           </div>
                       )}
                   </td>
                   <td className="p-5 text-right">
-                    <button onClick={() => openEditModal(s)} className="p-2 text-blue-300 hover:text-white transition bg-blue-500/10 hover:bg-blue-500/30 rounded-lg mr-2"><Edit2 size={16} /></button>
-                    <button onClick={() => handleDelete(s.id)} className="p-2 text-red-400 hover:text-white transition bg-red-500/10 hover:bg-red-500/40 rounded-lg"><Trash2 size={16} /></button>
+                    <button onClick={() => openEditModal(s)} className="p-2 text-blue-400 hover:text-white transition bg-blue-500/10 hover:bg-blue-500/40 rounded-xl mr-2 shadow-sm"><Edit2 size={16} /></button>
+                    <button onClick={() => handleDelete(s.id)} className="p-2 text-red-400 hover:text-white transition bg-red-500/10 hover:bg-red-500/40 rounded-xl shadow-sm"><Trash2 size={16} /></button>
                   </td>
                 </tr>
               ))}
+              {filteredStaff.length === 0 && !loading && <tr><td colSpan="4" className="text-center p-10 text-slate-500">No staff found for your business.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -138,60 +163,63 @@ export default function ManagerStaff() {
 
       {/* ADD/EDIT MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-800/90 backdrop-blur-2xl border border-slate-400/30 rounded-3xl shadow-2xl w-full max-w-lg p-8 relative">
-            <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-red-400 bg-white/5 p-1.5 rounded-xl transition-all"><X size={20} /></button>
-            <h3 className="text-xl font-bold text-white mb-6">{editingStaff ? 'Edit Staff Member' : 'Register New Staff'}</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-lg p-8 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
+            <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-all"><X size={20} /></button>
             
-            <form onSubmit={handleSave} className="space-y-4 text-sm">
+            <h3 className="text-2xl font-black text-white mb-6 flex items-center gap-3">
+                {editingStaff ? 'Edit Staff' : 'Add Business Staff'}
+            </h3>
+            
+            <form onSubmit={handleSave} className="space-y-5 text-sm">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="text-xs font-bold text-slate-300 mb-1 block">First Name</label>
-                    <input required type="text" value={formData.fName} onChange={e => setFormData({...formData, fName: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-400 transition-all" />
+                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">First Name</label>
+                    <input required type="text" value={formData.fName} onChange={e => setFormData({...formData, fName: e.target.value})} className="w-full bg-black/50 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner" placeholder="E.g. John" />
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-slate-300 mb-1 block">Last Name</label>
-                    <input required type="text" value={formData.lName} onChange={e => setFormData({...formData, lName: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-400 transition-all" />
+                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Last Name</label>
+                    <input required type="text" value={formData.lName} onChange={e => setFormData({...formData, lName: e.target.value})} className="w-full bg-black/50 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner" placeholder="E.g. Doe"/>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                      <label className="text-xs font-bold text-slate-300 mb-1 block">Phone Number</label>
-                      <input required type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-400 transition-all" />
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Phone Number</label>
+                      <input required type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full bg-black/50 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner" placeholder="07XXXXXXXX"/>
                   </div>
                   <div>
-                      <label className="text-xs font-bold text-slate-300 mb-1 block">NIC Number</label>
-                      <input required type="text" value={formData.nic} onChange={e => setFormData({...formData, nic: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-400 transition-all" />
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">NIC Number</label>
+                      <input required type="text" value={formData.nic} onChange={e => setFormData({...formData, nic: e.target.value})} className="w-full bg-black/50 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner" placeholder="NIC..."/>
                   </div>
               </div>
               
               <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Staff Role</label>
-                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-400 transition-all cursor-pointer">
-                    <option value="Ass Manager" className="bg-slate-800">Assistant Manager</option>
-                    <option value="Coordinator" className="bg-slate-800">Batch Coordinator</option>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Staff Role</label>
+                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full bg-black/50 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500 transition-all cursor-pointer shadow-inner appearance-none">
+                    <option value="Ass Manager" className="bg-slate-900">Assistant Manager</option>
+                    <option value="Coordinator" className="bg-slate-900">Batch Coordinator</option>
                   </select>
               </div>
 
-              {/* 🔥 Coordinator නම් විතරක් Batch Assign කරන්න පෙන්නනවා 🔥 */}
               {formData.role === 'Coordinator' && (
-                  <div className="animate-in zoom-in duration-300 p-4 bg-emerald-900/20 border border-emerald-500/20 rounded-xl">
-                      <label className="text-xs font-bold text-emerald-300 mb-2 block">Assign a Batch to this Coordinator</label>
-                      <select value={formData.assigned_batch_id} onChange={e => setFormData({...formData, assigned_batch_id: e.target.value})} className="w-full bg-black/40 border border-emerald-500/30 rounded-xl p-3 text-white outline-none focus:border-emerald-400 transition-all cursor-pointer">
-                          <option value="" className="bg-slate-800 text-slate-400">-- Do Not Assign Yet --</option>
+                  <div className="animate-in zoom-in duration-300 p-4 bg-blue-900/10 border border-blue-500/20 rounded-xl">
+                      <label className="text-[11px] font-bold text-blue-300 uppercase tracking-widest mb-2 block">Assign a Batch</label>
+                      <select value={formData.assigned_batch_id} onChange={e => setFormData({...formData, assigned_batch_id: e.target.value})} className="w-full bg-black/50 border border-blue-500/30 rounded-xl p-3 text-white outline-none focus:border-blue-400 transition-all cursor-pointer appearance-none">
+                          <option value="" className="bg-slate-900 text-slate-500">-- Do Not Assign Yet --</option>
                           {batches.map(b => (
-                              <option key={b.id} value={b.id} className="bg-slate-800 text-white">{b.name}</option>
+                              <option key={b.id} value={b.id} className="bg-slate-900 text-white">{b.name}</option>
                           ))}
                       </select>
                   </div>
               )}
 
               <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">{editingStaff ? 'New Password (Optional)' : 'Assign Password'}</label>
-                  <input type={editingStaff ? "password" : "text"} required={!editingStaff} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-400 transition-all" placeholder={editingStaff ? "Leave blank to keep current" : "Enter password"} />
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">{editingStaff ? 'New Password (Optional)' : 'Assign Password'}</label>
+                  <input type={editingStaff ? "password" : "text"} required={!editingStaff} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/50 border border-slate-700 rounded-xl p-3 text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner" placeholder={editingStaff ? "Leave blank to keep current" : "Enter initial password"} />
               </div>
               
-              <button type="submit" className="w-full bg-blue-600/80 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl mt-4 shadow-lg backdrop-blur-md transition-all">
+              <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black uppercase tracking-wider py-4 rounded-xl mt-6 shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-all transform hover:-translate-y-0.5">
                   {editingStaff ? 'Save Changes' : 'Register Staff'}
               </button>
             </form>

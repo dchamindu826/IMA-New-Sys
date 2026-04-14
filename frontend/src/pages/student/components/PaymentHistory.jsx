@@ -7,17 +7,23 @@ export default function PaymentHistory() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // 🔥 FIX: 404 Error එක එන නිසා path එක '/payments/my-payments' විදිහට හැදුවා 🔥
-        // (ඔයාගේ Backend එකේ /api/payments කියලා තියෙනවා කියලා හිතලා)
-        axios.get('/payments/my-payments')
-            .then(res => {
-                const all = res.data?.oldPayments || [];
+        const fetchPayments = async () => {
+            try {
+                let res;
+                try {
+                    // Mulima student path eka try karanawa
+                    res = await axios.get('/student/my-payments');
+                } catch (err) {
+                    // Eka 404 nam, meka try karanawa. Reload karanne NA!
+                    res = await axios.get('/payments/my-payments');
+                }
+
+                const all = res?.data?.oldPayments || res?.data || [];
                 const upcomingList = [];
                 const historyList = [];
 
                 all.forEach(p => {
                     if (p.isInstallment && p.allInstallments) {
-                        // 🚀 Installments වල හැම Step එකක්ම වෙන වෙනම කඩලා ගන්නවා 🚀
                         p.allInstallments.forEach(inst => {
                             const instData = {
                                 ...p,
@@ -28,17 +34,13 @@ export default function PaymentHistory() {
                                 stepNumber: inst.step,
                                 instId: inst.id
                             };
-                            
-                            // 1 = Approved, -3 = Rejected
                             if (inst.status === 1 || inst.status === -3) {
                                 historyList.push(instData);
                             } else {
-                                // 0 = Pending/Unpaid, -1 = Verifying
                                 upcomingList.push(instData);
                             }
                         });
                     } else {
-                        // 🚀 සාමාන්‍ය Payments 🚀
                         if (p.status === 1 || p.status === -3) {
                             historyList.push(p);
                         } else {
@@ -48,18 +50,14 @@ export default function PaymentHistory() {
                 });
 
                 setPayments({ upcoming: upcomingList, completed: historyList });
-            })
-            .catch(err => {
-                console.error("Payment Fetch Error:", err);
-                // Error එකක් ආවොත් Fallback එකක් විදිහට student path එකත් try කරමු
-                if(err.response?.status === 404) {
-                    axios.get('/student/my-payments').then(res => {
-                        // (Same logic here if the path was /student/my-payments)
-                        window.location.reload(); // Quick fallback reload
-                    }).catch(e => setLoading(false));
-                }
-            })
-            .finally(() => setLoading(false));
+            } catch (error) {
+                console.error("Payment Fetch Error:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPayments();
     }, []);
 
     const formatDate = (ds) => ds ? new Date(ds).toISOString().split('T')[0] : 'N/A';

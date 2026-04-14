@@ -3,24 +3,30 @@ const cors = require('cors');
 const path = require('path'); 
 require('dotenv').config();
 
-const authRoutes = require('./routes/authRoutes');
-const studentRoutes = require('./routes/studentRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const whatsappRoutes = require('./routes/whatsappRoutes');
-const taskRoutes = require('./routes/taskRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
-const financeRoutes = require('./routes/financeRoutes');
-const publicRoutes = require('./routes/publicRoutes');
-const courseSetupRoutes = require('./routes/courseSetupRoutes');
-const contentHubRoutes = require('./routes/contentHubRoutes');
-const templateRoutes = require('./routes/templateRoutes');
+// 🔥 පින්තූරෙ තියෙන විදිහටම අකුරක් නෑර ගලපපු Imports ටික 🔥
+const authRoutes = require('./src/modules/auth/auth.routes');
+const studentRoutes = require('./src/modules/students/student.routes');
+const adminRoutes = require('./src/modules/admin/admin.routes');
 
-// 🔥 CRM සහ Team වලට අදාල අලුත් සහ පරණ Routes 🔥
-const crmRoutes = require('./routes/crmRoutes'); 
-const teamRoutes = require('./routes/teamRoutes');
+const taskRoutes = require('./src/modules/manager/taskRoutes');
+const teamRoutes = require('./src/modules/manager/teamRoutes');
+const paymentRoutes = require('./src/modules/payments/payment.routes');
+const financeRoutes = require('./src/modules/payments/finance.routes');
 
-// 🚀 Webhook Controller එක මෙතනින් Import කරගන්න 🚀
-const whatsappWebhookController = require('./controllers/whatsappWebhookController');
+const publicRoutes = require('./src/modules/public/publicRoutes');
+const homeRoutes = require('./src/modules/public/homeRoutes');
+const commonRoutes = require('./src/modules/common/commonRoutes');
+
+// 🚨 මෙන්න ලොකුම අවුල තිබ්බ තැන! ෆෝල්ඩර් එක 'intergrations' (r අකුරක් එක්ක) 🚨
+const contentHubRoutes = require('./src/modules/intergrations/contentHubRoutes');
+const bridgeRoutes = require('./src/modules/intergrations/bridgeRoutes');
+
+const crmRoutes = require('./src/modules/crm/crm.routes');
+const callCampaignRoutes = require('./src/modules/crm/callCampaign.routes');
+const mobileRoutes = require('./src/modules/mobile/mobileRoutes');
+
+// 🚀 Webhook Controller එක
+const whatsappWebhookController = require('./src/modules/crm/whatsappWebhook.controller');
 
 const app = express();
 
@@ -37,45 +43,41 @@ app.use('/documents', express.static(path.join(__dirname, 'public/documents')));
 app.use('/api/auth', authRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/whatsapp', whatsappRoutes);
+
+// අලුත් Folders වලට Point කරපු Routes
+app.use('/api/whatsapp', callCampaignRoutes); 
 app.use('/api/tasks', taskRoutes);
+app.use('/api/team', teamRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api', financeRoutes);
 app.use('/api', publicRoutes); 
-app.use('/api/course-setup', courseSetupRoutes);
+app.use('/api', homeRoutes); 
+app.use('/api', commonRoutes);
 app.use('/api/admin/manager', contentHubRoutes);
-app.use('/api/templates', templateRoutes);
+app.use('/api/templates', taskRoutes); 
 
-// 🔥 LMS / Right Panel Routes (ඔයා අලුතින් හදපු එක) 🔥
-app.use('/api/bridge', require('./routes/bridgeRoutes'));
+// 🔥 LMS / Right Panel Routes 🔥
+app.use('/api/bridge', bridgeRoutes);
 
 // --- CRM & TEAM ROUTES ---
 app.use('/api/crm', crmRoutes); 
-app.use('/api/team', teamRoutes); 
 
-// 🔥 Mobile App එකට අදාල සම්පූර්ණ Routes මෙතනින් යන්නේ 🔥
-app.use('/api/mobile', require('./routes/mobile/mobileRoutes'));
+// 🔥 Mobile App එකට අදාල සම්පූර්ණ Routes 🔥
+app.use('/api/mobile', mobileRoutes);
 
-// 🚀 අලුත් Webhook Routes දෙක මෙතනින් දාන්න 🚀
-// Meta එකෙන් Verify කරගන්න (GET)
+// 🚀 Webhook Routes 🚀
 app.get('/api/webhook', whatsappWebhookController.verifyWebhook);
-// Meta එකෙන් මැසේජ් එවද්දි (POST)
 app.post('/api/webhook', whatsappWebhookController.handleIncomingMessage);
 
-// 🔥 ඔයාගේ පරණ Routes ෆයිල්ස් තියෙනවා නම් ඒවත් මෙතනින් Map කරන්න 🔥
-try { app.use('/api/crm', require('./routes/contacts')); } catch(e) {} 
-try { app.use('/api/broadcast', require('./routes/broadcast')); } catch(e) {} 
-try { app.use('/api/templates', require('./routes/templates')); } catch(e) {} 
-try { app.use('/api/quick-replies', require('./routes/quick_replies')); } catch(e) {} 
-
-const startTaskCron = require('./cron/taskCron');
+// Cron Jobs අලුත් Path එකෙන් Load කිරීම
+const startTaskCron = require('./src/cron/taskCron');
 
 const PORT = process.env.PORT || 5000;
 
-// 🔥 2. Server එක Start වෙද්දීම Cron එකත් Start කරන්න 🔥
+// 🔥 Server එක Start වෙද්දීම Cron එකත් Start කරනවා 🔥
 startTaskCron();
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
-    console.log("⏱️  Cron Jobs are initialized and running..."); // මේකත් දාන්න, එතකොට Terminal එකේ පෙනෙයි
+    console.log("⏱️  Cron Jobs are initialized and running..."); 
 });

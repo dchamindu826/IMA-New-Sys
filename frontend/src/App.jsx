@@ -11,6 +11,8 @@ import CourseView from "./pages/student/components/CourseView";
 
 // --- Shared imports ---
 import ContentHub from './pages/manager/ContentHub';
+// 🔥 NEW: Staff Progress Import Eka 🔥
+import StaffProgress from './pages/manager/StaffProgress';
 
 // --- Layouts ---
 import MainLayout from './layouts/MainLayout';
@@ -25,7 +27,6 @@ import PaymentHub from './pages/admin/PaymentHub';
 import StaffManager from './pages/admin/StaffManager';
 import BatchManager from './pages/admin/BatchManager';
 import AdminCrmSetup from './pages/admin/AdminCrmSetup'; 
-import UserInbox from './components/crm/manager/ManagerInbox';
 import StudentManager from './pages/admin/StudentManager';
 
 // --- Manager Pages ---
@@ -101,7 +102,9 @@ function App() {
           <Route path="admin/coordinator-tasks" element={<CoordinatorTasks />} />
           <Route path="admin/student-manager" element={<StudentManager loggedInUser={loggedInUser} />} />
           
-          {/* 🔥 FIX: මෙතන ManagerCRM වෙනුවට StaffCRM දැම්මා 🔥 */}
+          {/* 🔥 NEW: Admin ta Staff Progress eka balanna 🔥 */}
+          <Route path="admin/staff-progress" element={<StaffProgress />} />
+          
           <Route path="admin/staff-crm" element={<StaffCRM loggedInUser={loggedInUser} />} />
           <Route path="admin/crm-setup" element={<AdminCrmSetup />} />
 
@@ -112,6 +115,9 @@ function App() {
           <Route path="manager/content-hub" element={<ContentHub />} />
           <Route path="manager/payments" element={<ManagerPayments />} />
           <Route path="manager/crm" element={<ManagerCRM loggedInUser={loggedInUser} />} />
+          
+          {/* 🔥 NEW: Manager ta Staff Progress eka balanna 🔥 */}
+          <Route path="manager/staff-progress" element={<StaffProgress />} />
 
           <Route path="coordinator/dashboard" element={<CoordinatorDashboard />} />
           <Route path="coordinator/my-tasks" element={<CoordinatorTasks />} />

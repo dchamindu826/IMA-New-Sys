@@ -10,25 +10,47 @@ import StudentOverview from './components/StudentOverview';
 import DeliveryHub from './components/DeliveryHub';
 import ProfileSettings from './components/ProfileSettings';
 
+// 🔥 CRITICAL FIX: React Component එකට උඩින් මේක දාන්න. (එතකොට API යන්න කලින්ම Token එක අල්ලගන්නවා) 🔥
+const urlParams = new URLSearchParams(window.location.search);
+const ghostToken = urlParams.get('token');
+const isGhostMode = urlParams.get('embedded') === 'true';
+
+if (isGhostMode && ghostToken) {
+    // Iframe එක ඇතුලේදී Axios එකෙන් Manager ගේ Token එක අදින එක නවත්තන්න මෙතනදී LocalStorage එක Hack කරනවා.
+    const originalGetItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function(key) {
+        if (key === 'token' || key === 'userToken') return ghostToken;
+        return originalGetItem.apply(this, arguments);
+    };
+    axios.defaults.headers.common['Authorization'] = `Bearer ${ghostToken}`;
+}
+
 const StudentDashboard = () => {
 
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate(); 
 
-  // 🔥 FIX: මේ ටික useEffect එකෙන් එලියට ගත්තා. එතකොට API calls යන්න කලින්ම Token එක සේව් වෙනවා! 🔥
-  const urlToken = searchParams.get('token');
   const urlBusinessId = searchParams.get('businessId');
 
-  if (urlToken) {
-    localStorage.setItem('token', urlToken);
-    localStorage.setItem('userToken', urlToken); 
-  }
+  useEffect(() => {
+    // Normal Web Login ekak nam witharak Token eka Save karanawa
+    if (!isGhostMode && ghostToken) {
+        localStorage.setItem('token', ghostToken);
+        localStorage.setItem('userToken', ghostToken); 
+    }
 
-  if (urlBusinessId) {
-    localStorage.setItem('selectedBusiness', urlBusinessId); 
-    localStorage.setItem('businessId', urlBusinessId); 
-  }
+    if (urlBusinessId && !isGhostMode) {
+        localStorage.setItem('selectedBusiness', urlBusinessId); 
+        localStorage.setItem('businessId', urlBusinessId); 
+    }
+
+    // URL එක Clean කරනවා
+    if (ghostToken || urlBusinessId) {
+        const cleanUrl = isGhostMode ? `${location.pathname}?embedded=true` : location.pathname;
+        navigate(cleanUrl, { replace: true });
+    }
+  }, [ghostToken, urlBusinessId, location.pathname, navigate]);
   
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'home'); 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -38,11 +60,6 @@ const StudentDashboard = () => {
   const [alerts, setAlerts] = useState([]); 
 
   useEffect(() => {
-    // 🔥 URL එකේ තියෙන Token කෑල්ල අයින් කරලා දානවා (Security එකට හොඳයි)
-    if (urlToken || urlBusinessId) {
-        navigate(location.pathname, { replace: true });
-    }
-
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -57,12 +74,11 @@ const StudentDashboard = () => {
       }
     };
     fetchData();
-  }, [urlToken, urlBusinessId, location.pathname, navigate]);
+  }, []);
 
   const handleLogout = () => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      // 🚀 FIX: Hard redirect to clear all cached states instantly 🚀
       window.location.href = '/login';
   };
 
@@ -70,7 +86,6 @@ const StudentDashboard = () => {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-2 sm:p-4 md:p-8 relative overflow-hidden">
-      
       <div className="glass-container w-full max-w-[1600px] h-[98vh] md:h-[92vh] rounded-3xl md:rounded-[2.5rem] flex overflow-hidden relative z-10">
           
           <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} handleLogout={handleLogout} />
